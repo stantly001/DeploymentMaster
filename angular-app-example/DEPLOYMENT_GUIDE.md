@@ -1,289 +1,166 @@
 # Angular Application Deployment Guide
 
-This comprehensive guide covers various methods for deploying Angular applications in production environments, with a focus on Nginx-based deployments.
+This guide provides comprehensive instructions for deploying Angular applications in various environments using different deployment methods.
 
 ## Table of Contents
 
-1. [Deployment Options](#deployment-options)
-2. [Nginx Deployment](#nginx-deployment)
-3. [Docker Deployment](#docker-deployment)
-4. [Kubernetes Deployment](#kubernetes-deployment)
-5. [Continuous Deployment](#continuous-deployment)
-6. [Performance Optimizations](#performance-optimizations)
-7. [Security Considerations](#security-considerations)
-8. [Troubleshooting](#troubleshooting)
+1. [Prerequisites](#prerequisites)
+2. [Deployment Options](#deployment-options)
+   - [Nginx Deployment](#nginx-deployment)
+   - [Docker Deployment](#docker-deployment)
+   - [Kubernetes Deployment](#kubernetes-deployment)
+3. [Continuous Integration/Continuous Deployment](#continuous-integrationcontinuous-deployment)
+4. [SSL Configuration](#ssl-configuration)
+5. [Troubleshooting](#troubleshooting)
+
+## Prerequisites
+
+Before deploying your Angular application, ensure you have the following:
+
+- Node.js (v14+) and npm installed
+- Angular CLI (`npm install -g @angular/cli`)
+- Build artifacts generated (`ng build --prod`)
+- For Docker deployment: Docker installed and Docker Hub account
+- For Kubernetes deployment: kubectl configured with appropriate cluster access
+- For all deployment methods: Domain name and SSL certificates (optional but recommended)
 
 ## Deployment Options
 
-There are several approaches to deploying Angular applications:
+### Nginx Deployment
 
-1. **Static Web Server**: Deploy the built Angular app to a web server like Nginx or Apache.
-2. **Docker Containers**: Package the app and web server together in a Docker container.
-3. **Kubernetes**: Orchestrate containerized deployments for high availability.
-4. **Cloud Platform Services**: Use platform-specific services like AWS S3/CloudFront, Azure Static Web Apps, or Google Cloud Storage.
+Nginx is a lightweight, high-performance web server that works well for serving Angular applications.
 
-This guide focuses primarily on the Nginx-based deployment approach, which offers an excellent balance of performance, flexibility, and control.
+#### Basic Deployment Steps:
 
-## Nginx Deployment
-
-### Prerequisites
-
-- Node.js and npm for building the Angular application
-- Nginx web server installed on the target server
-- SSH access to the target server
-
-### Deployment Steps
-
-1. **Build the Angular application**:
+1. **Build your Angular application for production:**
    ```bash
-   ng build --configuration production
-   ```
-   This creates optimized static files in the `dist/` directory.
-
-2. **Copy files to the server**:
-   ```bash
-   scp -r dist/angular-app-example/* user@server:/var/www/html/
+   ng build --prod
    ```
    
-   Alternatively, use the provided deployment script:
+2. **Install Nginx (if not already installed):**
    ```bash
-   ./deploy.sh -e prod -s your-server.com -u your-user -d /var/www/html
-   ```
-
-3. **Configure Nginx**:
-   
-   Basic configuration (`nginx.conf`):
-   ```nginx
-   server {
-     listen 80;
-     server_name example.com;
-     root /var/www/html;
-     index index.html;
-
-     # Angular routing support
-     location / {
-       try_files $uri $uri/ /index.html;
-     }
-   }
+   sudo apt update
+   sudo apt install nginx
    ```
    
-   For production, use the enhanced `nginx-prod.conf` which includes:
-   - HTTPS configuration
-   - Security headers
-   - Performance optimizations
-   - Asset caching
-
-4. **Test and apply the Nginx configuration**:
+3. **Create an Nginx configuration file:**
+   Create a file at `/etc/nginx/sites-available/your-app.conf` with the content from our `nginx.conf` template.
+   
+4. **Enable the site and restart Nginx:**
    ```bash
-   sudo nginx -t
-   sudo systemctl reload nginx
+   sudo ln -s /etc/nginx/sites-available/your-app.conf /etc/nginx/sites-enabled/
+   sudo nginx -t  # Test the configuration
+   sudo systemctl restart nginx
    ```
 
-## Docker Deployment
+#### Using the Deployment Script:
 
-Docker provides a consistent deployment environment and simplifies the process.
+Our included `deploy.sh` script automates this process:
 
-### Prerequisites
-
-- Docker installed on both development and target machines
-- Container registry access (Docker Hub, ECR, GCR, etc.)
-
-### Deployment Steps
-
-1. **Build the Docker image** using the provided Dockerfile:
-   ```bash
-   docker build -t angular-app:latest .
-   ```
-
-2. **Test the image locally**:
-   ```bash
-   docker run -p 8080:80 angular-app:latest
-   ```
-
-3. **Push to a container registry**:
-   ```bash
-   docker tag angular-app:latest registry/username/angular-app:version
-   docker push registry/username/angular-app:version
-   ```
-
-4. **Deploy on the target server**:
-   ```bash
-   docker pull registry/username/angular-app:version
-   docker run -d -p 80:80 registry/username/angular-app:version
-   ```
-
-### Docker Compose (Optional)
-
-For more complex setups with additional services, use Docker Compose:
-
-```yaml
-version: '3'
-services:
-  web:
-    image: registry/username/angular-app:version
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./ssl:/etc/nginx/ssl
-    restart: always
+```bash
+./deploy.sh --env=prod --type=nginx --domain=your-domain.com
 ```
 
-## Kubernetes Deployment
+### Docker Deployment
 
-Kubernetes provides scalability, high availability, and automated deployments for production environments.
+Docker allows you to package your application with all dependencies in a container for consistent deployment across environments.
 
-### Prerequisites
+#### Basic Deployment Steps:
 
-- Kubernetes cluster (managed or self-hosted)
-- kubectl configured to access your cluster
-- Container registry with your Docker image
+1. **Build your Docker image:**
+   ```bash
+   docker build -t your-username/angular-app:latest .
+   ```
+   
+2. **Run the Docker container:**
+   ```bash
+   docker run -d -p 80:80 -p 443:443 -v /path/to/ssl:/etc/nginx/ssl --name angular-app your-username/angular-app:latest
+   ```
 
-### Deployment Steps
+#### Using the Deployment Script:
 
-1. **Apply the Kubernetes manifests** from the `k8s/` directory:
+```bash
+./deploy.sh --env=prod --type=docker --domain=your-domain.com --docker-registry=your-username
+```
+
+### Kubernetes Deployment
+
+Kubernetes provides a powerful platform for scaling and managing containerized applications.
+
+#### Basic Deployment Steps:
+
+1. **Apply the Kubernetes manifests:**
    ```bash
    kubectl apply -f k8s/deployment.yaml
    kubectl apply -f k8s/service.yaml
    kubectl apply -f k8s/ingress.yaml
    ```
 
-2. **Verify the deployment**:
-   ```bash
-   kubectl get deployments
-   kubectl get services
-   kubectl get ingress
-   ```
+#### Using the Deployment Script:
 
-3. **Scale the deployment** as needed:
-   ```bash
-   kubectl scale deployment angular-app --replicas=5
-   ```
-
-For more details, see the README in the `k8s/` directory.
-
-## Continuous Deployment
-
-Automate your deployments using CI/CD pipelines.
-
-### GitHub Actions Example
-
-```yaml
-name: Deploy Angular App
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v2
-    
-    - name: Set up Node.js
-      uses: actions/setup-node@v2
-      with:
-        node-version: '16'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Build
-      run: npm run build:prod
-      
-    - name: Build Docker image
-      run: docker build -t myregistry/angular-app:${{ github.sha }} .
-      
-    - name: Push Docker image
-      run: |
-        echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
-        docker push myregistry/angular-app:${{ github.sha }}
-        
-    - name: Deploy to production
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.HOST }}
-        username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.SSH_KEY }}
-        script: |
-          docker pull myregistry/angular-app:${{ github.sha }}
-          docker stop angular-app || true
-          docker rm angular-app || true
-          docker run -d --name angular-app -p 80:80 myregistry/angular-app:${{ github.sha }}
+```bash
+./deploy.sh --env=prod --type=kubernetes --domain=your-domain.com --docker-registry=your-username
 ```
 
-## Performance Optimizations
+## Continuous Integration/Continuous Deployment
 
-To optimize your Angular app deployment:
+This project includes a GitHub Actions workflow for automated CI/CD. The workflow:
 
-1. **Enable Gzip/Brotli compression** (already configured in provided Nginx configs)
+1. Builds the Angular application
+2. Runs unit and e2e tests
+3. Builds and pushes a Docker image
+4. Deploys to the specified environment
 
-2. **Implement aggressive caching** for static assets (configured in the Nginx configurations)
+To use this workflow:
 
-3. **Use a CDN** for global distribution:
-   - Configure your CDN to point to your Nginx server as the origin
-   - Update your CSP headers to allow the CDN domain
+1. Add the following secrets to your GitHub repository:
+   - `DOCKER_USERNAME` and `DOCKER_PASSWORD` for Docker Hub access
+   - `SSH_PRIVATE_KEY` for deployment server access
+   - `HOST` and `USERNAME` for the deployment server
+   - `SLACK_WEBHOOK` for deployment notifications (optional)
 
-4. **Enable HTTP/2** for multiplexing and reduced latency (configured in nginx-prod.conf)
+2. Push to the main branch or manually trigger the workflow.
 
-5. **Optimize bundle size**:
-   ```bash
-   ng build --configuration production --source-map=false --build-optimizer=true
-   ```
+## SSL Configuration
 
-## Security Considerations
+For production deployments, SSL certificates are essential. We recommend using Let's Encrypt:
 
-The provided configurations include several security enhancements:
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d your-domain.com
+```
 
-1. **HTTPS enforcement** with modern cipher suites and protocols
-
-2. **Security headers**:
-   - Content-Security-Policy
-   - X-XSS-Protection
-   - X-Frame-Options
-   - X-Content-Type-Options
-   - Strict-Transport-Security
-
-3. **Server hardening**:
-   - Running Nginx as a non-root user
-   - Hiding server version information
-   - Restricting access to hidden files
-
-4. **Regular updates**:
-   ```bash
-   sudo apt update && sudo apt upgrade -y nginx
-   ```
+Our Nginx configurations are pre-configured to use SSL certificates from `/etc/nginx/ssl/` or `/etc/letsencrypt/`.
 
 ## Troubleshooting
 
-### Common Issues
+### Common Issues and Solutions
 
-1. **404 errors on page refresh**
-   - Ensure the `try_files` directive is correctly configured in Nginx
-   - Check that the location block is properly targeting all routes
+1. **404 errors on page refresh:**
+   - Ensure your Nginx configuration includes proper URL rewriting for Angular's routing.
+   - Check the `try_files $uri $uri/ /index.html;` directive in your Nginx configuration.
 
-2. **Mixed content warnings**
-   - Make sure all resources are loaded over HTTPS
-   - Update hardcoded HTTP URLs in your Angular app
+2. **SSL certificate issues:**
+   - Verify certificate paths in Nginx configuration
+   - Check certificate expiration: `certbot certificates`
+   - Renew certificates if needed: `certbot renew`
 
-3. **CORS issues**
-   - Add appropriate CORS headers in your Nginx configuration:
-     ```nginx
-     add_header 'Access-Control-Allow-Origin' 'https://your-app.com';
-     add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-     add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
-     ```
+3. **Docker container not starting:**
+   - Check logs: `docker logs angular-app`
+   - Verify port availability: `netstat -tuln | grep '80\|443'`
 
-4. **Performance issues**
-   - Check for proper caching configuration
-   - Verify that compression is enabled and working
-   - Use browser developer tools to identify bottlenecks
+4. **Kubernetes deployment issues:**
+   - Check pod status: `kubectl get pods`
+   - View pod logs: `kubectl logs <pod-name>`
+   - Inspect events: `kubectl get events`
 
-5. **SSL/TLS certificate problems**
-   - Verify certificate validity: `openssl x509 -in certificate.crt -text -noout`
-   - Check certificate chain is complete
-   - Ensure private key matches certificate: `openssl pkey -in privateKey.key -pubout -outform pem | sha256sum`
+For more complex troubleshooting, refer to the specific documentation for Nginx, Docker, or Kubernetes.
 
-For additional support, consult the Nginx documentation or post specific issues to Stack Overflow or the Angular community forums.
+---
+
+## Additional Resources
+
+- [Angular Deployment Guide](https://angular.io/guide/deployment)
+- [Nginx Documentation](https://nginx.org/en/docs/)
+- [Docker Documentation](https://docs.docker.com/)
+- [Kubernetes Documentation](https://kubernetes.io/docs/home/)

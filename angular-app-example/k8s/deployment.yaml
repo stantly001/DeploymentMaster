@@ -9,6 +9,11 @@ spec:
   selector:
     matchLabels:
       app: angular-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
@@ -16,16 +21,20 @@ spec:
     spec:
       containers:
       - name: angular-app
-        image: angular-app:latest
+        image: ${DOCKER_REGISTRY}/angular-app:${IMAGE_TAG}
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
+          name: http
+        - containerPort: 443
+          name: https
         resources:
-          limits:
-            cpu: "500m"
-            memory: "512Mi"
           requests:
-            cpu: "100m"
             memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "300m"
         livenessProbe:
           httpGet:
             path: /
@@ -40,3 +49,67 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: ssl-certs
+          mountPath: /etc/nginx/ssl
+          readOnly: true
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      - name: ssl-certs
+        secret:
+          secretName: ssl-certificates
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+data:
+  nginx.conf: |
+    worker_processes auto;
+    pid /run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+        
+        sendfile        on;
+        tcp_nopush      on;
+        tcp_nodelay     on;
+        keepalive_timeout  65;
+        
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+        
+        # Security headers
+        add_header X-Frame-Options "SAMEORIGIN";
+        add_header X-XSS-Protection "1; mode=block";
+        add_header X-Content-Type-Options "nosniff";
+        add_header Referrer-Policy "strict-origin-when-cross-origin";
+        
+        server {
+            listen 80;
+            
+            root /usr/share/nginx/html;
+            index index.html;
+            
+            # Angular routing support
+            location / {
+                try_files $uri $uri/ /index.html;
+            }
+            
+            # Cache static assets
+            location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg)$ {
+                expires 30d;
+                add_header Cache-Control "public, no-transform";
+            }
+        }
+    }

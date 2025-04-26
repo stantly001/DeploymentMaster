@@ -1,160 +1,189 @@
 #!/bin/bash
-# Deployment script for Angular application to Nginx
+# Angular Application Deployment Script
+# This script handles the deployment of an Angular application to various environments
+# using different deployment methods (Nginx, Docker, Kubernetes)
 
-# Display usage information
-function show_usage {
-  echo "Usage: $0 [options]"
-  echo "Options:"
-  echo "  -e, --environment     Environment to deploy to (dev|staging|prod) [default: dev]"
-  echo "  -s, --server          Server address to deploy to [default: localhost]"
-  echo "  -p, --port            SSH port to use [default: 22]"
-  echo "  -u, --user            SSH user [default: ubuntu]"
-  echo "  -d, --dir             Remote directory to deploy to [default: /var/www/html]"
-  echo "  -h, --help            Show this help message"
-  exit 1
-}
+set -e
 
 # Default values
-ENVIRONMENT="dev"
-SERVER="localhost"
-SSH_PORT="22"
-SSH_USER="ubuntu"
-REMOTE_DIR="/var/www/html"
+ENV=${ENV:-"prod"}
+DEPLOYMENT_TYPE=${DEPLOYMENT_TYPE:-"nginx"}
+APP_DOMAIN=${APP_DOMAIN:-"example.com"}
+BUILD_NUMBER=$(date +%Y%m%d%H%M%S)
+IMAGE_TAG="v-${BUILD_NUMBER}"
 
-# Parse command-line arguments
+# Parse command line arguments
 while [[ $# -gt 0 ]]; do
-  key="$1"
-  case $key in
-    -e|--environment)
-      ENVIRONMENT="$2"
-      shift 2
+  case $1 in
+    --env=*)
+      ENV="${1#*=}"
+      shift
       ;;
-    -s|--server)
-      SERVER="$2"
-      shift 2
+    --type=*)
+      DEPLOYMENT_TYPE="${1#*=}"
+      shift
       ;;
-    -p|--port)
-      SSH_PORT="$2"
-      shift 2
+    --domain=*)
+      APP_DOMAIN="${1#*=}"
+      shift
       ;;
-    -u|--user)
-      SSH_USER="$2"
-      shift 2
+    --docker-registry=*)
+      DOCKER_REGISTRY="${1#*=}"
+      shift
       ;;
-    -d|--dir)
-      REMOTE_DIR="$2"
-      shift 2
+    --image-tag=*)
+      IMAGE_TAG="${1#*=}"
+      shift
       ;;
-    -h|--help)
-      show_usage
+    --help)
+      echo "Usage: $0 [options]"
+      echo "Options:"
+      echo "  --env=ENV               Environment to deploy to (dev, staging, prod) [default: prod]"
+      echo "  --type=TYPE             Deployment type (nginx, docker, kubernetes) [default: nginx]"
+      echo "  --domain=DOMAIN         Domain name for the application [default: example.com]"
+      echo "  --docker-registry=REG   Docker registry to use [required for docker/kubernetes deployment]"
+      echo "  --image-tag=TAG         Image tag to use [default: v-YYYYMMDDHHMMSS]"
+      echo "  --help                  Show this help message"
+      exit 0
       ;;
     *)
       echo "Unknown option: $1"
-      show_usage
+      exit 1
       ;;
   esac
 done
 
-# Display deployment information
-echo "===== Angular App Deployment ====="
-echo "Environment: $ENVIRONMENT"
-echo "Server: $SERVER"
-echo "SSH Port: $SSH_PORT"
-echo "SSH User: $SSH_USER"
-echo "Remote Directory: $REMOTE_DIR"
-echo "=================================="
+echo "🚀 Starting Angular application deployment"
+echo "⚙️  Environment: ${ENV}"
+echo "🔧 Deployment type: ${DEPLOYMENT_TYPE}"
+echo "🌐 Domain: ${APP_DOMAIN}"
+echo "📦 Build number: ${BUILD_NUMBER}"
 
-# Confirm deployment
-read -p "Continue with deployment? (y/n): " confirm
-if [[ $confirm != "y" && $confirm != "Y" ]]; then
-  echo "Deployment aborted."
-  exit 0
-fi
+# Build the application
+echo "📦 Building the application for ${ENV} environment..."
+npm run build:${ENV}
 
-# Build the application for the specified environment
-echo "Building Angular application for $ENVIRONMENT environment..."
-if [ "$ENVIRONMENT" == "prod" ]; then
-  npm run build:prod
-else
-  npm run build
-fi
-
-# Check if build was successful
-if [ $? -ne 0 ]; then
-  echo "Build failed! Aborting deployment."
+if [ ! -d "dist" ]; then
+  echo "❌ Build failed: 'dist' directory not found"
   exit 1
 fi
 
-# Create a timestamp for backup
-TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-
-# Deploy to server
-echo "Deploying to $SERVER..."
-if [ "$SERVER" == "localhost" ]; then
-  # Local deployment
-  echo "Deploying locally..."
-  
-  # Backup existing deployment
-  if [ -d "$REMOTE_DIR" ]; then
-    echo "Backing up existing deployment..."
-    sudo cp -r $REMOTE_DIR "${REMOTE_DIR}_backup_${TIMESTAMP}"
-  fi
-  
-  # Copy new build
-  echo "Copying new build to $REMOTE_DIR..."
-  sudo mkdir -p $REMOTE_DIR
-  sudo cp -r dist/angular-app-example/* $REMOTE_DIR
-  
-  # Set correct permissions
-  echo "Setting permissions..."
-  sudo chown -R www-data:www-data $REMOTE_DIR
-  sudo chmod -R 755 $REMOTE_DIR
-else
-  # Remote deployment
-  echo "Deploying to remote server $SERVER..."
-  
-  # Check if we can connect to the server
-  ssh -p $SSH_PORT $SSH_USER@$SERVER "echo 'Connection successful'" || { echo "Failed to connect to $SERVER"; exit 1; }
-  
-  # Create remote directory if it doesn't exist
-  ssh -p $SSH_PORT $SSH_USER@$SERVER "sudo mkdir -p $REMOTE_DIR"
-  
-  # Backup existing deployment
-  echo "Backing up existing deployment on remote server..."
-  ssh -p $SSH_PORT $SSH_USER@$SERVER "if [ -d \"$REMOTE_DIR\" ] && [ \"\$(ls -A $REMOTE_DIR)\" ]; then sudo cp -r $REMOTE_DIR ${REMOTE_DIR}_backup_${TIMESTAMP}; fi"
-  
-  # Copy new build
-  echo "Copying new build to remote server..."
-  scp -P $SSH_PORT -r dist/angular-app-example/* $SSH_USER@$SERVER:/tmp/angular-deploy
-  
-  # Move to final location and set permissions
-  ssh -p $SSH_PORT $SSH_USER@$SERVER "sudo cp -r /tmp/angular-deploy/* $REMOTE_DIR && sudo rm -rf /tmp/angular-deploy && sudo chown -R www-data:www-data $REMOTE_DIR && sudo chmod -R 755 $REMOTE_DIR"
-fi
-
-# Configure Nginx
-echo "Configuring Nginx..."
-if [ "$SERVER" == "localhost" ]; then
-  # Local Nginx configuration
-  sudo cp nginx.conf /etc/nginx/conf.d/angular-app.conf
-  sudo nginx -t
-  if [ $? -eq 0 ]; then
-    sudo systemctl reload nginx
-    echo "Nginx configuration updated and reloaded."
-  else
-    echo "Nginx configuration test failed. Please check the configuration."
+# Deploy based on deployment type
+case ${DEPLOYMENT_TYPE} in
+  nginx)
+    echo "🔧 Deploying with Nginx..."
+    NGINX_CONF="nginx-${ENV}.conf"
+    
+    if [ ! -f "${NGINX_CONF}" ]; then
+      echo "⚠️ Nginx configuration file '${NGINX_CONF}' not found. Using default configuration."
+      NGINX_CONF="nginx.conf"
+    fi
+    
+    # Generate Nginx configuration
+    echo "📝 Generating Nginx configuration..."
+    node scripts/nginx-config-generator.js --env=${ENV} --domain=${APP_DOMAIN} --output=./nginx-${ENV}-generated.conf
+    
+    # Copy build artifacts to web server directory
+    echo "📂 Copying build artifacts to web server directory..."
+    DEPLOY_DIR="/var/www/html/${APP_DOMAIN}"
+    sudo mkdir -p ${DEPLOY_DIR}
+    sudo cp -r dist/angular-app-example/* ${DEPLOY_DIR}/
+    
+    # Copy and load Nginx configuration
+    echo "📝 Installing Nginx configuration..."
+    sudo cp ./nginx-${ENV}-generated.conf /etc/nginx/sites-available/${APP_DOMAIN}.conf
+    sudo ln -sf /etc/nginx/sites-available/${APP_DOMAIN}.conf /etc/nginx/sites-enabled/
+    
+    # Test Nginx configuration and reload
+    echo "🔍 Testing Nginx configuration..."
+    sudo nginx -t
+    if [ $? -eq 0 ]; then
+      echo "🔄 Reloading Nginx..."
+      sudo systemctl reload nginx
+      echo "✅ Deployment completed successfully!"
+    else
+      echo "❌ Nginx configuration test failed. Deployment aborted."
+      exit 1
+    fi
+    ;;
+    
+  docker)
+    echo "🐳 Deploying with Docker..."
+    
+    if [ -z "${DOCKER_REGISTRY}" ]; then
+      echo "❌ Docker registry not specified. Use --docker-registry=REGISTRY"
+      exit 1
+    fi
+    
+    # Build Docker image
+    echo "🔨 Building Docker image..."
+    docker build -t ${DOCKER_REGISTRY}/angular-app:${IMAGE_TAG} \
+      --build-arg ENV=${ENV} \
+      --build-arg APP_DOMAIN=${APP_DOMAIN} .
+      
+    # Push Docker image
+    echo "📤 Pushing Docker image to registry..."
+    docker push ${DOCKER_REGISTRY}/angular-app:${IMAGE_TAG}
+    
+    # Deploy to Docker host
+    echo "🚀 Deploying to Docker host..."
+    ssh ${DEPLOY_USER}@${DEPLOY_HOST} "
+      docker pull ${DOCKER_REGISTRY}/angular-app:${IMAGE_TAG}
+      docker stop angular-app || true
+      docker rm angular-app || true
+      docker run -d --name angular-app \
+        -p 80:80 -p 443:443 \
+        -v /etc/letsencrypt:/etc/nginx/ssl \
+        --restart always \
+        ${DOCKER_REGISTRY}/angular-app:${IMAGE_TAG}
+      docker image prune -af --filter 'until=24h'
+    "
+    echo "✅ Deployment completed successfully!"
+    ;;
+    
+  kubernetes)
+    echo "☸️ Deploying to Kubernetes..."
+    
+    if [ -z "${DOCKER_REGISTRY}" ]; then
+      echo "❌ Docker registry not specified. Use --docker-registry=REGISTRY"
+      exit 1
+    fi
+    
+    # Build and push Docker image
+    echo "🔨 Building Docker image..."
+    docker build -t ${DOCKER_REGISTRY}/angular-app:${IMAGE_TAG} \
+      --build-arg ENV=${ENV} \
+      --build-arg APP_DOMAIN=${APP_DOMAIN} .
+      
+    echo "📤 Pushing Docker image to registry..."
+    docker push ${DOCKER_REGISTRY}/angular-app:${IMAGE_TAG}
+    
+    # Process Kubernetes manifests
+    echo "📝 Processing Kubernetes manifests..."
+    mkdir -p k8s/generated
+    for file in k8s/*.yaml; do
+      BASENAME=$(basename $file)
+      cat $file | \
+        sed "s|\${DOCKER_REGISTRY}|${DOCKER_REGISTRY}|g" | \
+        sed "s|\${IMAGE_TAG}|${IMAGE_TAG}|g" | \
+        sed "s|\${APP_DOMAIN}|${APP_DOMAIN}|g" > k8s/generated/$BASENAME
+    done
+    
+    # Apply Kubernetes manifests
+    echo "🚀 Applying Kubernetes manifests..."
+    kubectl apply -f k8s/generated/
+    
+    # Wait for deployment to complete
+    echo "⏳ Waiting for deployment to complete..."
+    kubectl rollout status deployment/angular-app
+    
+    echo "✅ Deployment completed successfully!"
+    ;;
+    
+  *)
+    echo "❌ Unknown deployment type: ${DEPLOYMENT_TYPE}"
     exit 1
-  fi
-else
-  # Remote Nginx configuration
-  scp -P $SSH_PORT nginx.conf $SSH_USER@$SERVER:/tmp/angular-app.conf
-  ssh -p $SSH_PORT $SSH_USER@$SERVER "sudo cp /tmp/angular-app.conf /etc/nginx/conf.d/angular-app.conf && sudo nginx -t && sudo systemctl reload nginx"
-  if [ $? -ne 0 ]; then
-    echo "Remote Nginx configuration failed. Please check the configuration."
-    exit 1
-  fi
-fi
+    ;;
+esac
 
-echo "======================================"
-echo "Deployment completed successfully!"
-echo "Application deployed to: $SERVER:$REMOTE_DIR"
-echo "======================================"
+echo "🎉 Angular application deployed to ${ENV} environment using ${DEPLOYMENT_TYPE} method"
