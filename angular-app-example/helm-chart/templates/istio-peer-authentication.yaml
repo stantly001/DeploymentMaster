@@ -1,0 +1,25 @@
+{{- if and .Values.istio.enabled .Values.istio.security.peerAuthentication.enabled -}}
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ .Values.application.name }}-peer-authentication
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.application.name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.application.name }}
+  mtls:
+    mode: {{ .Values.istio.security.peerAuthentication.mtlsMode }}
+  {{- if .Values.istio.security.peerAuthentication.portLevelMtls }}
+  portLevelMtls:
+    {{- range $port, $mode := .Values.istio.security.peerAuthentication.portLevelMtls }}
+    {{ $port }}:
+      mode: {{ $mode }}
+    {{- end }}
+  {{- end }}
+{{- end }}

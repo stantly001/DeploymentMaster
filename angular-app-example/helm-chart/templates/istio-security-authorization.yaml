@@ -1,0 +1,68 @@
+{{- if and .Values.istio.enabled .Values.istio.security.authorization.enabled -}}
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ .Values.application.name }}-authorization
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.application.name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.application.name }}
+  action: {{ .Values.istio.security.authorization.action }}
+  rules:
+  {{- range .Values.istio.security.authorization.rules }}
+  - from:
+    {{- with .from }}
+    - source:
+        {{- if .principals }}
+        principals:
+        {{- range .principals }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- end }}
+        {{- if .namespaces }}
+        namespaces:
+        {{- range .namespaces }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- end }}
+        {{- if .ipBlocks }}
+        ipBlocks:
+        {{- range .ipBlocks }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- end }}
+    {{- end }}
+    to:
+    {{- with .to }}
+    - operation:
+        {{- if .methods }}
+        methods:
+        {{- range .methods }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- end }}
+        {{- if .paths }}
+        paths:
+        {{- range .paths }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- end }}
+    {{- end }}
+    {{- if .when }}
+    when:
+    {{- range .when }}
+    - key: {{ .key | quote }}
+      values:
+      {{- range .values }}
+      - {{ . | quote }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

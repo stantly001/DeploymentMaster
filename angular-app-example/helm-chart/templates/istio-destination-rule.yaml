@@ -1,0 +1,39 @@
+{{- if .Values.istio.enabled -}}
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: {{ .Values.application.name }}-destinationrule
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.application.name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  host: {{ .Values.application.name }}
+  {{- if .Values.istio.trafficManagement.circuitBreaker.enabled }}
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: {{ .Values.istio.trafficManagement.circuitBreaker.maxConnections }}
+        connectTimeout: {{ .Values.istio.trafficManagement.circuitBreaker.connectTimeout }}
+      http:
+        http1MaxPendingRequests: {{ .Values.istio.trafficManagement.circuitBreaker.http1MaxPendingRequests }}
+        maxRequestsPerConnection: {{ .Values.istio.trafficManagement.circuitBreaker.maxRequestsPerConnection }}
+        maxRetries: {{ .Values.istio.trafficManagement.circuitBreaker.maxRetries }}
+    outlierDetection:
+      consecutive5xxErrors: {{ .Values.istio.trafficManagement.circuitBreaker.consecutive5xxErrors }}
+      interval: {{ .Values.istio.trafficManagement.circuitBreaker.interval }}
+      baseEjectionTime: {{ .Values.istio.trafficManagement.circuitBreaker.baseEjectionTime }}
+      maxEjectionPercent: {{ .Values.istio.trafficManagement.circuitBreaker.maxEjectionPercent }}
+  {{- end }}
+  {{- if or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled }}
+  subsets:
+  - name: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion | default "v1" }}
+    labels:
+      version: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion | default "v1" }}
+  - name: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
+    labels:
+      version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
+  {{- end }}
+{{- end }}

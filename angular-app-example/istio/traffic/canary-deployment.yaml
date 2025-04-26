@@ -1,0 +1,30 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: angular-canary
+  namespace: angular-app
+spec:
+  hosts:
+  - "example.com"  # Replace with your domain
+  gateways:
+  - angular-gateway
+  http:
+  - match:
+    - headers:
+        # Enable canary testing with specific header
+        x-canary:
+          exact: "true"
+    route:
+    - destination:
+        host: angular-app
+        subset: v2  # Route to new version
+        port:
+          number: 80
+      weight: 100
+  - route:
+    - destination:
+        host: angular-app
+        subset: v1  # Route to current stable version
+        port:
+          number: 80
+      weight: 100

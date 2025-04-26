@@ -1,0 +1,85 @@
+{{- if .Values.istio.enabled -}}
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: {{ .Values.application.name }}-virtualservice
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.application.name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  hosts:
+  {{- range .Values.istio.virtualService.hosts }}
+  - {{ . | quote }}
+  {{- end }}
+  gateways:
+  - {{ .Values.application.name }}-gateway
+  http:
+  {{- if .Values.istio.trafficManagement.canary.enabled }}
+  - match:
+    - headers:
+        {{ .Values.istio.trafficManagement.canary.header }}:
+          exact: "true"
+    route:
+    - destination:
+        host: {{ .Values.application.name }}
+        subset: {{ .Values.istio.trafficManagement.canary.version }}
+        port:
+          number: {{ .Values.service.port }}
+      weight: 100
+  {{- end }}
+  {{- if .Values.istio.trafficManagement.faultInjection.enabled }}
+  - match:
+    - headers:
+        {{ .Values.istio.trafficManagement.faultInjection.header }}:
+          exact: {{ .Values.istio.trafficManagement.faultInjection.headerValue }}
+    route:
+    - destination:
+        host: {{ .Values.application.name }}
+        subset: {{ .Values.istio.trafficManagement.faultInjection.targetVersion }}
+        port:
+          number: {{ .Values.service.port }}
+    fault:
+      delay:
+        percentage:
+          value: {{ .Values.istio.trafficManagement.faultInjection.delayPercentage }}
+        fixedDelay: {{ .Values.istio.trafficManagement.faultInjection.fixedDelay }}
+      {{- if .Values.istio.trafficManagement.faultInjection.abortPercentage }}
+      abort:
+        percentage:
+          value: {{ .Values.istio.trafficManagement.faultInjection.abortPercentage }}
+        httpStatus: {{ .Values.istio.trafficManagement.faultInjection.errorCode }}
+      {{- end }}
+  {{- end }}
+  - route:
+    {{- if .Values.istio.trafficManagement.trafficShifting.enabled }}
+    - destination:
+        host: {{ .Values.application.name }}
+        subset: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion }}
+        port:
+          number: {{ .Values.service.port }}
+      weight: {{ .Values.istio.trafficManagement.trafficShifting.stableWeight }}
+    - destination:
+        host: {{ .Values.application.name }}
+        subset: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion }}
+        port:
+          number: {{ .Values.service.port }}
+      weight: {{ .Values.istio.trafficManagement.trafficShifting.canaryWeight }}
+    {{- else }}
+    - destination:
+        host: {{ .Values.application.name }}
+        port:
+          number: {{ .Values.service.port }}
+    {{- end }}
+    {{- with .Values.istio.trafficManagement.retries }}
+    retries:
+      attempts: {{ .attempts }}
+      perTryTimeout: {{ .perTryTimeout }}
+      retryOn: {{ .retryOn | quote }}
+    {{- end }}
+    {{- with .Values.istio.trafficManagement.timeout }}
+    timeout: {{ . }}
+    {{- end }}
+{{- end }}

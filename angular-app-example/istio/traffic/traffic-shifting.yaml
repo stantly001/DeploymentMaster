@@ -1,0 +1,24 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: angular-traffic-shifting
+  namespace: angular-app
+spec:
+  hosts:
+  - "example.com"  # Replace with your domain
+  gateways:
+  - angular-gateway
+  http:
+  - route:
+    - destination:
+        host: angular-app
+        subset: v1  # Current stable version
+        port:
+          number: 80
+      weight: 90
+    - destination:
+        host: angular-app
+        subset: v2  # New version
+        port:
+          number: 80
+      weight: 10  # Send 10% of traffic to v2
