@@ -1,0 +1,160 @@
+# Default values for angular-app Helm chart
+
+# Application settings
+application:
+  name: angular-app
+  version: 1.0.0
+
+# Deployment configuration
+deployment:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  pod:
+    annotations: {}
+    labels: {}
+    securityContext: {}
+
+# Container settings
+container:
+  image:
+    repository: your-registry/angular-app
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  livenessProbe:
+    enabled: true
+    path: /
+    port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    path: /
+    port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+    successThreshold: 1
+
+# Service configuration
+service:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+  hosts:
+    - host: example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: angular-app-tls
+      hosts:
+        - example.com
+
+# Nginx configuration
+nginx:
+  configMapName: nginx-config
+  config: |
+    worker_processes auto;
+    pid /run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+        
+        sendfile        on;
+        tcp_nopush      on;
+        tcp_nodelay     on;
+        keepalive_timeout  65;
+        
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+        
+        # Security headers
+        add_header X-Frame-Options "SAMEORIGIN";
+        add_header X-XSS-Protection "1; mode=block";
+        add_header X-Content-Type-Options "nosniff";
+        add_header Referrer-Policy "strict-origin-when-cross-origin";
+        
+        server {
+            listen 80;
+            
+            root /usr/share/nginx/html;
+            index index.html;
+            
+            # Angular routing support
+            location / {
+                try_files $uri $uri/ /index.html;
+            }
+            
+            # Cache static assets
+            location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg)$ {
+                expires 30d;
+                add_header Cache-Control "public, no-transform";
+            }
+        }
+    }
+
+# SSL configuration
+ssl:
+  enabled: true
+  secret:
+    name: ssl-certificates
+    create: false
+    # If create is set to true, the following values will be used
+    # to create a TLS secret from existing files
+    crtFile: "tls.crt"
+    keyFile: "tls.key"
+
+# Volume mounts
+volumeMounts:
+  - name: nginx-config
+    mountPath: /etc/nginx/nginx.conf
+    subPath: nginx.conf
+  - name: ssl-certs
+    mountPath: /etc/nginx/ssl
+    readOnly: true
+
+volumes:
+  - name: nginx-config
+    configMap:
+      name: nginx-config
+  - name: ssl-certs
+    secret:
+      secretName: ssl-certificates
