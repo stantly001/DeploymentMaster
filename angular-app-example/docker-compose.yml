@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # Build service for development
+  angular-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: angular-dev
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    command: npm run start
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Build service for testing
+  angular-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: angular-test
+    environment:
+      - NODE_ENV=test
+    command: npm run test -- --watch=false --browsers=ChromeHeadless
+    volumes:
+      - ./:/app
+      - /app/node_modules
+
+  # Production build service
+  angular-build:
+    build:
+      context: .
+      dockerfile: multi-stage.Dockerfile
+      target: build
+    container_name: angular-build
+    volumes:
+      - ./dist:/app/dist
+
+  # Production service
+  angular-prod:
+    build:
+      context: .
+      dockerfile: multi-stage.Dockerfile
+    container_name: angular-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
