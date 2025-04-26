@@ -1,145 +1,242 @@
 #!/bin/bash
-# Helm Chart Deployment Script for Angular Application
-# This script handles the deployment of an Angular application using Helm
+#==============================================================================
+# Angular Application Helm Deployment Script
+#
+# This script deploys an Angular application to Kubernetes using Helm,
+# with optional Istio service mesh integration.
+#
+# Author: Your Name
+# Date: April 2025
+#==============================================================================
 
-set -e
+set -eo pipefail # Exit on error and undefined variables
 
-# Default values
-ENV=${ENV:-"prod"}
-NAMESPACE=${NAMESPACE:-"default"}
-RELEASE_NAME=${RELEASE_NAME:-"angular-app"}
-CHART_PATH="./helm-chart"
-APP_DOMAIN=${APP_DOMAIN:-"example.com"}
-DOCKER_REGISTRY=${DOCKER_REGISTRY:-""}
-IMAGE_TAG=${IMAGE_TAG:-"latest"}
-VALUES_FILE="./helm-chart/values.yaml"
-DRY_RUN=${DRY_RUN:-"false"}
-TIMEOUT=${TIMEOUT:-"5m"}
-INSTALL_ARGS=""
+#------------------------------------------------------------------------------
+# Configuration
+#------------------------------------------------------------------------------
+RELEASE_NAME="angular-app"
+NAMESPACE="angular-app"
+HELM_CHART_PATH="./helm-chart"
+VALUES_FILE="$HELM_CHART_PATH/values.yaml"
+TIMEOUT="5m"
+CUSTOM_VALUES_FILE=""
+TEMP_VALUES_FILE="/tmp/values-modified.yaml"
 
-# Parse command line arguments
-while [[ $# -gt 0 ]]; do
-  case $1 in
-    --env=*)
-      ENV="${1#*=}"
-      shift
-      ;;
-    --namespace=*)
-      NAMESPACE="${1#*=}"
-      shift
-      ;;
-    --release=*)
-      RELEASE_NAME="${1#*=}"
-      shift
-      ;;
-    --domain=*)
-      APP_DOMAIN="${1#*=}"
-      shift
-      ;;
-    --registry=*)
-      DOCKER_REGISTRY="${1#*=}"
-      shift
-      ;;
-    --tag=*)
-      IMAGE_TAG="${1#*=}"
-      shift
-      ;;
-    --values=*)
-      VALUES_FILE="${1#*=}"
-      shift
-      ;;
-    --dry-run)
-      DRY_RUN="true"
-      shift
-      ;;
-    --timeout=*)
-      TIMEOUT="${1#*=}"
-      shift
-      ;;
-    --help)
-      echo "Usage: $0 [options]"
-      echo "Options:"
-      echo "  --env=ENV               Environment to deploy to (dev, staging, prod) [default: prod]"
-      echo "  --namespace=NAMESPACE   Kubernetes namespace to deploy to [default: default]"
-      echo "  --release=NAME          Helm release name [default: angular-app]"
-      echo "  --domain=DOMAIN         Domain name for the application [default: example.com]"
-      echo "  --registry=REG          Docker registry [optional]"
-      echo "  --tag=TAG               Image tag [default: latest]"
-      echo "  --values=FILE           Custom values file [default: ./helm-chart/values.yaml]"
-      echo "  --dry-run               Perform a dry run of the installation"
-      echo "  --timeout=DURATION      Set timeout for Helm operations [default: 5m]"
-      echo "  --help                  Show this help message"
-      exit 0
-      ;;
-    *)
-      echo "Unknown option: $1"
-      exit 1
-      ;;
-  esac
-done
+#------------------------------------------------------------------------------
+# Display Header
+#------------------------------------------------------------------------------
+function print_banner() {
+  echo "===================================================="
+  echo "     Angular Application Helm Deployment Tool"
+  echo "===================================================="
+  echo
+}
 
-echo "🚀 Starting Helm deployment for Angular application"
-echo "⚙️  Environment: ${ENV}"
-echo "🔧 Kubernetes Namespace: ${NAMESPACE}"
-echo "📦 Helm Release: ${RELEASE_NAME}"
-echo "🌐 Domain: ${APP_DOMAIN}"
+#------------------------------------------------------------------------------
+# Parse command-line arguments
+#------------------------------------------------------------------------------
+function parse_args() {
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+      --release)
+        RELEASE_NAME="$2"
+        shift
+        shift
+        ;;
+      --namespace)
+        NAMESPACE="$2"
+        shift
+        shift
+        ;;
+      --values)
+        CUSTOM_VALUES_FILE="$2"
+        shift
+        shift
+        ;;
+      --timeout)
+        TIMEOUT="$2"
+        shift
+        shift
+        ;;
+      --help)
+        echo "Usage: ./helm_deploy.sh [options]"
+        echo ""
+        echo "Options:"
+        echo "  --release NAME       Set the Helm release name (default: angular-app)"
+        echo "  --namespace NS       Set the Kubernetes namespace (default: angular-app)"
+        echo "  --values FILE        Specify custom values file"
+        echo "  --timeout DURATION   Set deployment timeout (default: 5m)"
+        echo "  --help               Display this help message"
+        exit 0
+        ;;
+      *)
+        echo "Unknown option: $1"
+        echo "Run ./helm_deploy.sh --help for usage information"
+        exit 1
+        ;;
+    esac
+  done
 
-# Create namespace if it doesn't exist
-if ! kubectl get namespace ${NAMESPACE} > /dev/null 2>&1; then
-  echo "📝 Creating namespace ${NAMESPACE}..."
-  kubectl create namespace ${NAMESPACE}
-fi
-
-# Set values overrides
-SET_VALUES="--set ingress.hosts[0].host=${APP_DOMAIN}"
-SET_VALUES="${SET_VALUES} --set ingress.tls[0].hosts[0]=${APP_DOMAIN}"
-
-if [ -n "${DOCKER_REGISTRY}" ]; then
-  SET_VALUES="${SET_VALUES} --set container.image.repository=${DOCKER_REGISTRY}/angular-app"
-fi
-
-if [ -n "${IMAGE_TAG}" ]; then
-  SET_VALUES="${SET_VALUES} --set container.image.tag=${IMAGE_TAG}"
-fi
-
-# Set the dry run flag if needed
-if [ "${DRY_RUN}" = "true" ]; then
-  INSTALL_ARGS="${INSTALL_ARGS} --dry-run"
-fi
-
-# Deploy with Helm
-echo "☸️  Deploying with Helm..."
-if helm status ${RELEASE_NAME} -n ${NAMESPACE} > /dev/null 2>&1; then
-  echo "🔄 Upgrading existing release ${RELEASE_NAME}..."
-  helm upgrade ${RELEASE_NAME} ${CHART_PATH} \
-    -n ${NAMESPACE} \
-    -f ${VALUES_FILE} \
-    ${SET_VALUES} \
-    --timeout ${TIMEOUT} \
-    ${INSTALL_ARGS}
-else
-  echo "📦 Installing new release ${RELEASE_NAME}..."
-  helm install ${RELEASE_NAME} ${CHART_PATH} \
-    -n ${NAMESPACE} \
-    -f ${VALUES_FILE} \
-    ${SET_VALUES} \
-    --timeout ${TIMEOUT} \
-    ${INSTALL_ARGS}
-fi
-
-if [ "${DRY_RUN}" = "false" ]; then
-  echo "⏳ Waiting for deployment to be ready..."
-  kubectl -n ${NAMESPACE} rollout status deployment/${RELEASE_NAME}
-  
-  echo "ℹ️  Deployed resources:"
-  kubectl -n ${NAMESPACE} get deployments,services,ingress,configmaps,secrets -l app=${RELEASE_NAME}
-  
-  echo "✅ Helm deployment completed successfully!"
-  
-  if kubectl -n ${NAMESPACE} get ingress ${RELEASE_NAME} > /dev/null 2>&1; then
-    INGRESS_HOST=$(kubectl -n ${NAMESPACE} get ingress ${RELEASE_NAME} -o jsonpath='{.spec.rules[0].host}')
-    echo "🌐 Application is available at https://${INGRESS_HOST}"
+  # Log the configuration
+  echo "Configuration:"
+  echo "  Release name:  $RELEASE_NAME"
+  echo "  Namespace:     $NAMESPACE"
+  echo "  Helm chart:    $HELM_CHART_PATH"
+  echo "  Timeout:       $TIMEOUT"
+  if [ -n "$CUSTOM_VALUES_FILE" ]; then
+    echo "  Values file:   $CUSTOM_VALUES_FILE"
   fi
-else
-  echo "✅ Dry run completed successfully!"
-fi
+  echo
+}
+
+#------------------------------------------------------------------------------
+# Check for Istio and prepare namespace
+#------------------------------------------------------------------------------
+function setup_namespace() {
+  echo "➤ Ensuring namespace '$NAMESPACE' exists..."
+  kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+  # Check if Istio is installed
+  if kubectl get crd gateways.networking.istio.io &> /dev/null; then
+    echo "✓ Istio service mesh detected"
+    ISTIO_ENABLED=true
+    
+    # Enable Istio sidecar injection
+    echo "➤ Enabling Istio sidecar injection for namespace '$NAMESPACE'..."
+    kubectl label namespace $NAMESPACE istio-injection=enabled --overwrite
+  else
+    echo "! Istio service mesh not detected"
+    echo "  - The deployment will continue without Istio integration"
+    echo "  - To enable Istio features, install Istio first"
+    ISTIO_ENABLED=false
+    
+    # Prepare values file with Istio disabled
+    if [ "$ISTIO_ENABLED" = false ]; then
+      # Create a temporary values file with Istio disabled
+      echo "➤ Creating values file with Istio disabled..."
+      if [ -n "$CUSTOM_VALUES_FILE" ]; then
+        cp "$CUSTOM_VALUES_FILE" "$TEMP_VALUES_FILE"
+      else
+        cp "$VALUES_FILE" "$TEMP_VALUES_FILE"
+      fi
+      yq e '.istio.enabled = false' -i "$TEMP_VALUES_FILE"
+      CUSTOM_VALUES_FILE="$TEMP_VALUES_FILE"
+    fi
+  fi
+}
+
+#------------------------------------------------------------------------------
+# Deploy the Helm chart
+#------------------------------------------------------------------------------
+function deploy_chart() {
+  echo "➤ Deploying Helm chart '$RELEASE_NAME'..."
+  
+  # Prepare the Helm command
+  HELM_CMD=(helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_PATH" \
+            --namespace "$NAMESPACE" \
+            --timeout "$TIMEOUT" \
+            --create-namespace \
+            --wait)
+  
+  # Add custom values file if specified
+  if [ -n "$CUSTOM_VALUES_FILE" ]; then
+    HELM_CMD+=(--values "$CUSTOM_VALUES_FILE")
+  fi
+  
+  # Execute the Helm command
+  "${HELM_CMD[@]}"
+  
+  if [ $? -eq 0 ]; then
+    echo "✓ Helm deployment successful"
+  else
+    echo "✗ Helm deployment failed"
+    exit 1
+  fi
+}
+
+#------------------------------------------------------------------------------
+# Show deployment information
+#------------------------------------------------------------------------------
+function show_deployment_info() {
+  echo "➤ Checking deployment status..."
+  kubectl get pods -n "$NAMESPACE"
+  
+  echo
+  echo "➤ Service details:"
+  kubectl get svc -n "$NAMESPACE"
+  
+  # Display Istio resources if enabled
+  if [ "$ISTIO_ENABLED" = true ]; then
+    echo
+    echo "➤ Istio resources:"
+    echo "Gateway:"
+    kubectl get gateway -n "$NAMESPACE"
+    
+    echo
+    echo "Virtual Service:"
+    kubectl get virtualservice -n "$NAMESPACE"
+    
+    echo
+    echo "Destination Rule:"
+    kubectl get destinationrule -n "$NAMESPACE"
+    
+    # Check for any Istio-specific issues
+    echo
+    echo "➤ Validating Istio configuration..."
+    if command -v istioctl &> /dev/null; then
+      istioctl analyze -n "$NAMESPACE" || true
+    else
+      echo "! istioctl not found. Skipping Istio validation."
+    fi
+  fi
+  
+  # Display application URLs
+  echo
+  echo "➤ Application access:"
+  if [ "$ISTIO_ENABLED" = true ]; then
+    echo "The application should be accessible through the Istio Gateway."
+    echo "Check the Istio Ingress Gateway service for the external IP:"
+    kubectl get svc -n istio-system istio-ingressgateway
+  else
+    echo "Service type: $(kubectl get svc -n "$NAMESPACE" "$RELEASE_NAME" -o jsonpath='{.spec.type}')"
+    if kubectl get svc -n "$NAMESPACE" "$RELEASE_NAME" -o jsonpath='{.spec.type}' | grep -q "LoadBalancer"; then
+      EXTERNAL_IP=$(kubectl get svc -n "$NAMESPACE" "$RELEASE_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+      if [ -n "$EXTERNAL_IP" ]; then
+        SERVICE_PORT=$(kubectl get svc -n "$NAMESPACE" "$RELEASE_NAME" -o jsonpath='{.spec.ports[0].port}')
+        echo "Application URL: http://$EXTERNAL_IP:$SERVICE_PORT"
+      else
+        echo "External IP is not yet available. Check again later with:"
+        echo "  kubectl get svc -n $NAMESPACE $RELEASE_NAME"
+      fi
+    else
+      echo "The service is not exposed externally. Use port-forwarding to access it:"
+      echo "  kubectl port-forward -n $NAMESPACE svc/$RELEASE_NAME 8080:80"
+      echo "Then access the application at: http://localhost:8080"
+    fi
+  fi
+}
+
+#------------------------------------------------------------------------------
+# Main flow
+#------------------------------------------------------------------------------
+function main() {
+  print_banner
+  parse_args "$@"
+  setup_namespace
+  deploy_chart
+  show_deployment_info
+  
+  # Clean up
+  if [ -f "$TEMP_VALUES_FILE" ]; then
+    rm "$TEMP_VALUES_FILE"
+  fi
+  
+  echo
+  echo "===================================================="
+  echo "✓ Deployment completed successfully!"
+  echo "===================================================="
+}
+
+# Execute main function with all arguments
+main "$@"

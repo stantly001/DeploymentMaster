@@ -1,29 +1,38 @@
+{{- /* Istio Gateway: Entry point for external traffic */ -}}
 {{- if .Values.istio.enabled -}}
 apiVersion: networking.istio.io/v1alpha3
 kind: Gateway
 metadata:
-  name: {{ .Values.application.name }}-gateway
+  name: {{ include "angular-app.fullname" . }}-gateway
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ .Values.application.name }}
-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
-    release: "{{ .Release.Name }}"
-    heritage: "{{ .Release.Service }}"
+    {{- include "angular-app.labels" . | nindent 4 }}
+    component: ingress
 spec:
+  # Associate this gateway with Istio's ingress gateway
   selector:
-    istio: ingressgateway # Use the default Istio ingress gateway
+    istio: ingressgateway # Using the default Istio ingress gateway
+  
+  # Server configurations
   servers:
+  # HTTP server configuration - typically used for redirects to HTTPS
   - port:
       number: 80
       name: http
       protocol: HTTP
-    hosts:
+    hosts: # Domains that this gateway will accept traffic for
     {{- range .Values.istio.gateway.hosts }}
     - {{ . | quote }}
     {{- end }}
+    {{- if .Values.istio.gateway.httpsRedirect }}
+    # Redirect HTTP requests to HTTPS when enabled
     tls:
-      httpsRedirect: {{ .Values.istio.gateway.httpsRedirect }}
+      httpsRedirect: true
+    {{- end }}
+  
+  {{- /* HTTPS server configuration */ -}}
   {{- if .Values.istio.gateway.tls.enabled }}
+  # HTTPS server configuration with TLS settings
   - port:
       number: 443
       name: https
@@ -33,7 +42,16 @@ spec:
     - {{ . | quote }}
     {{- end }}
     tls:
+      # TLS mode: 
+      # - SIMPLE: Standard TLS (one-way)
+      # - MUTUAL: Mutual TLS (two-way) 
+      # - PASSTHROUGH: Pass through the TLS handshake
       mode: {{ .Values.istio.gateway.tls.mode }}
+      
+      # Reference to Kubernetes secret containing TLS certificates
+      # Format should match Istio/Kubernetes requirements:
+      # - For SIMPLE: tls.key and tls.crt
+      # - For MUTUAL: tls.key, tls.crt, ca.crt
       credentialName: {{ .Values.istio.gateway.tls.credentialName }}
   {{- end }}
 {{- end }}

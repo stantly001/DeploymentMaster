@@ -1,164 +1,187 @@
-# Default values for Angular application
-# This is a YAML-formatted file.
+# =====================================================================
+# Angular Application Helm Chart Values
+# =====================================================================
 
+# -------------------------
+# Core Application Settings
+# -------------------------
 application:
-  name: angular-app
-  version: 1.0.0
+  name: angular-app                   # Name used for k8s resources
+  version: 1.0.0                      # Application version
 
-# Deployment configuration
-replicaCount: 2
+# -------------------------
+# Deployment Configuration
+# -------------------------
+replicaCount: 2                       # Number of pods to run
 image:
   repository: gcr.io/your-project/angular-app
-  tag: latest
-  pullPolicy: Always
-nameOverride: ""
-fullnameOverride: ""
+  tag: latest                         # Defaults to Chart appVersion if not specified
+  pullPolicy: Always                  # Use IfNotPresent for production
+nameOverride: ""                      # Override chart name if needed
+fullnameOverride: ""                  # Override full name generation
 
-# Resource configuration
+# -------------------------
+# Resource Management
+# -------------------------
 resources:
-  limits:
-    cpu: 200m
-    memory: 256Mi
+  # Production recommended minimums
   requests:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 100m                         # 0.1 vCPU
+    memory: 128Mi                     # 128 MB RAM
+  # Resource caps
+  limits:
+    cpu: 200m                         # 0.2 vCPU
+    memory: 256Mi                     # 256 MB RAM
 
-# Service configuration
+# -------------------------
+# Network Configuration
+# -------------------------
 service:
-  type: ClusterIP
-  port: 80
-  targetPort: 80
+  type: ClusterIP                     # Use LoadBalancer for direct external access
+  port: 80                            # External port
+  targetPort: 80                      # Container port
+  annotations: {}                     # Service annotations if needed
 
-# Ingress configuration (non-Istio)
+# Standard Kubernetes Ingress (used when Istio is disabled)
 ingress:
-  enabled: false
-  annotations: {}
+  enabled: false                      # Set to true to use standard Kubernetes Ingress
+  annotations: {}                     # Optional ingress annotations 
   hosts:
     - host: chart-example.local
       paths: ["/"]
-  tls: []
+  tls: []                             # TLS configuration for standard ingress
 
-# Horizontal Pod Autoscaler
+# -------------------------
+# Autoscaling Configuration
+# -------------------------
 autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
+  enabled: true                       # Set to true to enable HPA
+  minReplicas: 2                      # Minimum number of pods
+  maxReplicas: 10                     # Maximum number of pods
+  targetCPUUtilizationPercentage: 80  # Target CPU utilization
+  targetMemoryUtilizationPercentage: 80 # Target memory utilization
 
-# Pod configuration
-podAnnotations: {}
-podSecurityContext: {}
-securityContext: {}
-nodeSelector: {}
-tolerations: []
-affinity: {}
+# -------------------------
+# Pod Configuration
+# -------------------------
+podAnnotations: {}                    # Custom annotations for pods
+podSecurityContext: {}                # Pod-level security context
+securityContext: {}                   # Container-level security context
+nodeSelector: {}                      # Node selection constraints
+tolerations: []                       # Pod tolerations
+affinity: {}                          # Pod affinity/anti-affinity rules
 
-# Istio configuration
+# -------------------------
+# Istio Service Mesh Configuration
+# -------------------------
 istio:
-  enabled: true
+  enabled: true                       # Set to false to disable all Istio features
+
+  # Gateway configuration (controls ingress traffic)
   gateway:
     hosts:
-      - "example.com"
+      - "example.com" 
       - "www.example.com"
-    httpsRedirect: true
+    httpsRedirect: true               # Redirect HTTP to HTTPS
     tls:
-      enabled: true
-      mode: SIMPLE
-      credentialName: angular-tls-cert
+      enabled: true                   # Enable TLS termination
+      mode: SIMPLE                    # Options: SIMPLE, MUTUAL, PASSTHROUGH
+      credentialName: angular-tls-cert # Reference to Kubernetes secret with TLS cert
 
+  # Virtual Service (defines routing rules)
   virtualService:
     hosts:
       - "example.com"
       - "www.example.com"
   
-  # Traffic management configurations
+  # Traffic Management Configurations
   trafficManagement:
-    # Canary deployment with header-based routing
+    # Canary Deployment - Route traffic based on headers
     canary:
-      enabled: true
-      header: "x-canary"
-      version: "v2"
+      enabled: true                   # Enable header-based routing
+      header: "x-canary"              # Header name to check
+      version: "v2"                   # Target version for canary traffic
+      imageTag: ""                    # Image tag for canary (defaults to main tag if empty)
     
-    # Traffic shifting / weighted routing
+    # Traffic Shifting - Weighted routing between versions
     trafficShifting:
-      enabled: true
-      stableVersion: "v1"
-      stableWeight: 90
-      canaryVersion: "v2"
-      canaryWeight: 10
+      enabled: true                   # Enable percentage-based traffic splitting
+      stableVersion: "v1"             # Current stable version
+      stableWeight: 90                # Percentage of traffic to stable (0-100)
+      canaryVersion: "v2"             # New version being rolled out
+      canaryWeight: 10                # Percentage of traffic to canary (0-100)
     
-    # Circuit breaker configuration
+    # Circuit Breaker - Prevent cascading failures
     circuitBreaker:
-      enabled: true
-      maxConnections: 100
-      connectTimeout: "30ms"
-      http1MaxPendingRequests: 1
-      maxRequestsPerConnection: 1
-      maxRetries: 3
-      consecutive5xxErrors: 1
-      interval: "1s"
-      baseEjectionTime: "3m"
-      maxEjectionPercent: 100
+      enabled: true                   # Enable circuit breaker
+      maxConnections: 100             # Maximum connections
+      connectTimeout: "30ms"          # Connection timeout
+      http1MaxPendingRequests: 1      # Max pending HTTP/1.1 requests
+      maxRequestsPerConnection: 1     # Max requests per connection
+      maxRetries: 3                   # Maximum retry attempts
+      consecutive5xxErrors: 1         # Number of 5xx errors before ejection
+      interval: "1s"                  # Interval for checking errors
+      baseEjectionTime: "3m"          # Base time for ejection
+      maxEjectionPercent: 100         # Maximum percentage of instances to eject
     
-    # Fault injection for testing
+    # Fault Injection - Test resilience
     faultInjection:
-      enabled: true
-      header: "x-test-fault"
-      headerValue: "inject-fault"
-      targetVersion: "v1"
-      delayPercentage: 100.0
-      fixedDelay: "5s"
-      abortPercentage: 10.0
-      errorCode: 500
+      enabled: true                   # Enable fault injection for testing
+      header: "x-test-fault"          # Header to trigger fault injection
+      headerValue: "inject-fault"     # Header value to trigger fault injection
+      targetVersion: "v1"             # Version to inject faults into
+      delayPercentage: 100.0          # Percentage of requests to delay
+      fixedDelay: "5s"                # Fixed delay duration
+      abortPercentage: 10.0           # Percentage of requests to abort
+      errorCode: 500                  # HTTP error code to return
     
-    # Request timeouts
-    timeout: "10s"
+    # Request Timeout Configuration
+    timeout: "10s"                    # Default request timeout
     
-    # Retry policy
+    # Retry Configuration
     retries:
-      attempts: 3
-      perTryTimeout: "2s"
-      retryOn: "gateway-error,connect-failure,refused-stream"
+      attempts: 3                     # Maximum retry attempts
+      perTryTimeout: "2s"             # Timeout per retry attempt
+      retryOn: "gateway-error,connect-failure,refused-stream" # Conditions to retry
 
-  # Security configurations
+  # Security Configurations
   security:
     # Authorization policies
     authorization:
-      enabled: true
-      action: ALLOW
+      enabled: true                   # Enable authorization policy
+      action: ALLOW                   # Action: ALLOW, DENY, AUDIT
       rules:
         - from:
             principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
           to:
-            methods: ["GET", "POST"]
-            paths: ["/api/*", "/assets/*", "/*"]
+            methods: ["GET", "POST"]  # HTTP methods to allow
+            paths: ["/api/*", "/assets/*", "/*"] # Paths to allow
     
-    # mTLS configuration
+    # Mutual TLS configuration
     peerAuthentication:
-      enabled: true
-      mtlsMode: STRICT
-      portLevelMtls:
-        8080: PERMISSIVE
+      enabled: true                   # Enable mTLS
+      mtlsMode: STRICT                # Options: STRICT, PERMISSIVE, DISABLE
+      portLevelMtls:                  # Per-port mTLS settings
+        8080: PERMISSIVE              # Allow non-TLS traffic on port 8080
   
-  # Telemetry configuration
+  # Telemetry and Observability Configuration
   telemetry:
-    enabled: true
-    metricsProviders:
-      - prometheus
-    metricsOverrides:
-      - metric: REQUEST_COUNT
+    enabled: true                     # Enable Istio telemetry
+    metricsProviders:                 # Metrics collection providers
+      - prometheus                    # Enable Prometheus metrics
+    metricsOverrides:                 # Metric customization
+      - metric: REQUEST_COUNT         # Override for request count metric
+        mode: CLIENT_AND_SERVER       # Collect metrics from both client and server
+        tagOverrides:
+          app: "angular-app"          # Add application tag to metrics
+      - metric: REQUEST_DURATION      # Override for latency metric
         mode: CLIENT_AND_SERVER
         tagOverrides:
           app: "angular-app"
-      - metric: REQUEST_DURATION
-        mode: CLIENT_AND_SERVER
-        tagOverrides:
-          app: "angular-app"
-    tracing:
+    tracing:                          # Distributed tracing configuration
       providers:
-        - zipkin
-      samplingRate: 100.0
-    accessLogging:
+        - zipkin                      # Enable Zipkin tracing
+      samplingRate: 100.0             # Percentage of requests to sample
+    accessLogging:                    # Access logging configuration
       providers:
-        - envoy
+        - envoy                       # Use Envoy for access logs

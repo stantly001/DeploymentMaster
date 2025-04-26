@@ -1,85 +1,104 @@
+{{- /* Istio VirtualService for request routing */ -}}
 {{- if .Values.istio.enabled -}}
 apiVersion: networking.istio.io/v1alpha3
 kind: VirtualService
 metadata:
-  name: {{ .Values.application.name }}-virtualservice
+  name: {{ include "angular-app.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ .Values.application.name }}
-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
-    release: "{{ .Release.Name }}"
-    heritage: "{{ .Release.Service }}"
+    {{- include "angular-app.labels" . | nindent 4 }}
+    component: routing
 spec:
+  # Hosts define the destination hosts to which traffic is being sent
   hosts:
   {{- range .Values.istio.virtualService.hosts }}
   - {{ . | quote }}
   {{- end }}
+  # Gateways define which gateways can use this virtual service
   gateways:
-  - {{ .Values.application.name }}-gateway
+  - {{ include "angular-app.fullname" . }}-gateway
+
+  # HTTP routing rules (processed in order)
   http:
+  {{- /* Rule 1: Canary Deployment with Header-Based Routing */ -}}
   {{- if .Values.istio.trafficManagement.canary.enabled }}
-  - match:
+  - name: "canary-header-rule"
+    match:
     - headers:
         {{ .Values.istio.trafficManagement.canary.header }}:
           exact: "true"
     route:
     - destination:
-        host: {{ .Values.application.name }}
+        host: {{ include "angular-app.fullname" . }}
         subset: {{ .Values.istio.trafficManagement.canary.version }}
         port:
           number: {{ .Values.service.port }}
       weight: 100
   {{- end }}
+
+  {{- /* Rule 2: Fault Injection for Testing */ -}}
   {{- if .Values.istio.trafficManagement.faultInjection.enabled }}
-  - match:
+  - name: "fault-injection-rule"
+    match:
     - headers:
         {{ .Values.istio.trafficManagement.faultInjection.header }}:
           exact: {{ .Values.istio.trafficManagement.faultInjection.headerValue }}
     route:
     - destination:
-        host: {{ .Values.application.name }}
+        host: {{ include "angular-app.fullname" . }}
         subset: {{ .Values.istio.trafficManagement.faultInjection.targetVersion }}
         port:
           number: {{ .Values.service.port }}
     fault:
+      # Introduce artificial delay for latency testing
       delay:
         percentage:
           value: {{ .Values.istio.trafficManagement.faultInjection.delayPercentage }}
         fixedDelay: {{ .Values.istio.trafficManagement.faultInjection.fixedDelay }}
       {{- if .Values.istio.trafficManagement.faultInjection.abortPercentage }}
+      # Introduce artificial HTTP errors for error handling testing
       abort:
         percentage:
           value: {{ .Values.istio.trafficManagement.faultInjection.abortPercentage }}
         httpStatus: {{ .Values.istio.trafficManagement.faultInjection.errorCode }}
       {{- end }}
   {{- end }}
-  - route:
+
+  {{- /* Rule 3: Default Traffic Routing (with optional weighted distribution) */ -}}
+  - name: "default-route"
+    route:
     {{- if .Values.istio.trafficManagement.trafficShifting.enabled }}
+    # Weighted traffic distribution between versions
     - destination:
-        host: {{ .Values.application.name }}
+        host: {{ include "angular-app.fullname" . }}
         subset: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion }}
         port:
           number: {{ .Values.service.port }}
       weight: {{ .Values.istio.trafficManagement.trafficShifting.stableWeight }}
     - destination:
-        host: {{ .Values.application.name }}
+        host: {{ include "angular-app.fullname" . }}
         subset: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion }}
         port:
           number: {{ .Values.service.port }}
       weight: {{ .Values.istio.trafficManagement.trafficShifting.canaryWeight }}
     {{- else }}
+    # Single destination routing (no traffic splitting)
     - destination:
-        host: {{ .Values.application.name }}
+        host: {{ include "angular-app.fullname" . }}
         port:
           number: {{ .Values.service.port }}
     {{- end }}
+    
+    {{- /* Retry configuration for resilience */ -}}
     {{- with .Values.istio.trafficManagement.retries }}
     retries:
-      attempts: {{ .attempts }}
-      perTryTimeout: {{ .perTryTimeout }}
-      retryOn: {{ .retryOn | quote }}
+      attempts: {{ .attempts }}         # Number of retry attempts
+      perTryTimeout: {{ .perTryTimeout }} # Timeout per retry
+      retryOn: {{ .retryOn | quote }}   # Conditions that trigger retries
     {{- end }}
+    
+    {{- /* Request timeout configuration */ -}}
     {{- with .Values.istio.trafficManagement.timeout }}
-    timeout: {{ . }}
+    timeout: {{ . }}                    # Overall request timeout
     {{- end }}
 {{- end }}

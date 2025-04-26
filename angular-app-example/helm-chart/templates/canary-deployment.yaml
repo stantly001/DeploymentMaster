@@ -1,63 +1,87 @@
+{{- /* Canary deployment - only created when Istio traffic management is enabled */ -}}
 {{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Values.application.name }}-canary
+  name: {{ include "angular-app.fullname" . }}-canary
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ .Values.application.name }}
-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
-    release: "{{ .Release.Name }}"
-    heritage: "{{ .Release.Service }}"
+    {{- include "angular-app.labels" . | nindent 4 }}
     version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
+    role: canary
 spec:
+  {{- /* Canary deployments typically use fewer replicas than the primary deployment */ -}}
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ div .Values.replicaCount 2 | ceil | int }}
+  {{- end }}
   selector:
     matchLabels:
-      app: {{ .Values.application.name }}
+      {{- include "angular-app.selectorLabels" . | nindent 6 }}
       version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
   template:
     metadata:
       labels:
-        app: {{ .Values.application.name }}
+        {{- include "angular-app.selectorLabels" . | nindent 8 }}
         version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
       annotations:
-        {{- if .Values.podAnnotations }}
-        {{- toYaml .Values.podAnnotations | nindent 8 }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
-        # Add specific annotation for canary deployment
+        {{- /* Ensure Istio sidecar is injected */ -}}
         sidecar.istio.io/inject: "true"
+        {{- /* Add monitoring annotation to distinguish metrics */ -}}
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "{{ .Values.service.targetPort }}"
+        {{- /* Auto reload on config changes if running in dev mode */ -}}
+        {{- if .Values.dev }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
-        - name: {{ .Values.application.name }}
+        - name: {{ .Chart.Name }}-canary
+          {{- with .Values.securityContext }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- /* Use canary-specific image tag if provided, otherwise use the main one */ -}}
           image: "{{ .Values.image.repository }}:{{ .Values.istio.trafficManagement.canary.imageTag | default .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
+          {{- /* Health checks for canary deployment - more aggressive than primary */ -}}
           livenessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 60
+            initialDelaySeconds: 30  # Faster initial check for canary
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
           readinessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 30
+            initialDelaySeconds: 15  # Faster readiness check for canary
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+            successThreshold: 1
+          {{- /* Resource limits and requests */ -}}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- /* Node placement configuration */ -}}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

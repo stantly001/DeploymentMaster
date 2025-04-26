@@ -1,44 +1,78 @@
+{{- /* Istio Telemetry: Configure metrics, tracing, and logging */ -}}
 {{- if and .Values.istio.enabled .Values.istio.telemetry.enabled -}}
 apiVersion: telemetry.istio.io/v1alpha1
 kind: Telemetry
 metadata:
-  name: {{ .Values.application.name }}-telemetry
+  name: {{ include "angular-app.fullname" . }}-telemetry
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ .Values.application.name }}
-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
-    release: "{{ .Release.Name }}"
-    heritage: "{{ .Release.Service }}"
+    {{- include "angular-app.labels" . | nindent 4 }}
+    component: observability
 spec:
+  # Metrics configuration
   metrics:
   - providers:
     {{- range .Values.istio.telemetry.metricsProviders }}
-    - name: {{ . }}
+    - name: {{ . }}  # Provider name (e.g., prometheus)
     {{- end }}
+    
+    # Metric overrides allow customizing built-in metrics
     overrides:
     {{- range .Values.istio.telemetry.metricsOverrides }}
     - match:
-        metric: {{ .metric }}
-        mode: {{ .mode }}
+        metric: {{ .metric }}             # The metric to override (e.g., REQUEST_COUNT)
+        mode: {{ .mode }}                 # CLIENT_AND_SERVER, CLIENT, or SERVER
+      
+      # Add custom dimensions (tags) to metrics
       tagOverrides:
         {{- range $key, $value := .tagOverrides }}
         {{ $key }}:
-          value: {{ $value | quote }}
+          value: {{ $value | quote }}     # Static value to add to metrics
         {{- end }}
     {{- end }}
+  
+  {{- /* Distributed tracing configuration */ -}}
   {{- if .Values.istio.telemetry.tracing }}
   tracing:
   - providers:
     {{- range .Values.istio.telemetry.tracing.providers }}
-    - name: {{ . }}
+    - name: {{ . }}                       # Tracing provider (e.g., zipkin)
     {{- end }}
+    
+    # Percentage of requests to sample for tracing
+    # Higher values provide more coverage but increase overhead
     randomSamplingPercentage: {{ .Values.istio.telemetry.tracing.samplingRate }}
+    
+    # Optional: Configure custom tags for traces
+    customTags:
+      application:
+        literal:
+          value: {{ include "angular-app.fullname" . }}
+      environment:
+        literal:
+          value: {{ .Release.Namespace }}
   {{- end }}
+  
+  {{- /* Access logging configuration */ -}}
   {{- if .Values.istio.telemetry.accessLogging }}
   accessLogging:
   - providers:
     {{- range .Values.istio.telemetry.accessLogging.providers }}
-    - name: {{ . }}
+    - name: {{ . }}                       # Logging provider (e.g., envoy)
     {{- end }}
+    
+    # Filter to determine which requests get logged
+    filter:
+      # Only log responses with 5xx status codes
+      responseCode:
+        comparison: GREATER_OR_EQUAL
+        value: 500
+      
+    # Optional: Configure sampling (log only a percentage of requests)
+    sampling:
+      random: 
+        # Log all error responses but only 10% of successful ones
+        useRequestId: true
+        value: 10 
   {{- end }}
 {{- end }}

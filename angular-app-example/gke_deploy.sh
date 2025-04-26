@@ -1,102 +1,51 @@
 #!/bin/bash
-# Google Kubernetes Engine (GKE) Deployment Script for Angular Application
-# This script handles the deployment of an Angular application to GKE
+# Script to deploy Angular application to Google Kubernetes Engine (GKE) using Helm
 
 set -e
 
-# Default values
-PROJECT_ID=${PROJECT_ID:-""}
-CLUSTER_NAME=${CLUSTER_NAME:-"angular-cluster"}
-CLUSTER_ZONE=${CLUSTER_ZONE:-"us-central1-a"}
-CLUSTER_REGION=${CLUSTER_REGION:-"us-central1"}
-CLUSTER_SIZE=${CLUSTER_SIZE:-"3"}
-MACHINE_TYPE=${MACHINE_TYPE:-"e2-standard-2"}
-ENV=${ENV:-"prod"}
-NAMESPACE=${NAMESPACE:-"default"}
-RELEASE_NAME=${RELEASE_NAME:-"angular-app"}
-APP_DOMAIN=${APP_DOMAIN:-"example.com"}
-IMAGE_TAG=${IMAGE_TAG:-"latest"}
-CREATE_CLUSTER=${CREATE_CLUSTER:-"false"}
-USE_HELM=${USE_HELM:-"true"}
-USE_REGIONAL=${USE_REGIONAL:-"false"}
+# Configuration variables
+PROJECT_ID="" # Set your GCP project ID
+CLUSTER_NAME="angular-cluster"
+CLUSTER_ZONE="us-central1-a"
+RELEASE_NAME="angular-app"
+NAMESPACE="angular-app"
+HELM_CHART_PATH="./helm-chart"
+VALUES_FILE="$HELM_CHART_PATH/values.yaml"
+DOCKER_IMAGE="gcr.io/$PROJECT_ID/angular-app:latest"
+TIMEOUT="5m"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
-  case $1 in
-    --project=*)
-      PROJECT_ID="${1#*=}"
+  key="$1"
+  case $key in
+    --project)
+      PROJECT_ID="$2"
+      shift
       shift
       ;;
-    --cluster=*)
-      CLUSTER_NAME="${1#*=}"
+    --cluster)
+      CLUSTER_NAME="$2"
+      shift
       shift
       ;;
-    --zone=*)
-      CLUSTER_ZONE="${1#*=}"
+    --zone)
+      CLUSTER_ZONE="$2"
+      shift
       shift
       ;;
-    --region=*)
-      CLUSTER_REGION="${1#*=}"
+    --image)
+      DOCKER_IMAGE="$2"
       shift
-      ;;
-    --size=*)
-      CLUSTER_SIZE="${1#*=}"
-      shift
-      ;;
-    --machine-type=*)
-      MACHINE_TYPE="${1#*=}"
-      shift
-      ;;
-    --env=*)
-      ENV="${1#*=}"
-      shift
-      ;;
-    --namespace=*)
-      NAMESPACE="${1#*=}"
-      shift
-      ;;
-    --release=*)
-      RELEASE_NAME="${1#*=}"
-      shift
-      ;;
-    --domain=*)
-      APP_DOMAIN="${1#*=}"
-      shift
-      ;;
-    --tag=*)
-      IMAGE_TAG="${1#*=}"
-      shift
-      ;;
-    --create-cluster)
-      CREATE_CLUSTER="true"
-      shift
-      ;;
-    --no-helm)
-      USE_HELM="false"
-      shift
-      ;;
-    --regional)
-      USE_REGIONAL="true"
       shift
       ;;
     --help)
-      echo "Usage: $0 [options]"
+      echo "Usage: ./gke_deploy.sh [options]"
+      echo ""
       echo "Options:"
-      echo "  --project=ID            Google Cloud Project ID [required]"
-      echo "  --cluster=NAME          GKE cluster name [default: angular-cluster]"
-      echo "  --zone=ZONE             GKE cluster zone [default: us-central1-a]"
-      echo "  --region=REGION         GKE cluster region for regional clusters [default: us-central1]"
-      echo "  --size=SIZE             GKE cluster size (nodes) [default: 3]"
-      echo "  --machine-type=TYPE     GKE node machine type [default: e2-standard-2]"
-      echo "  --env=ENV               Environment to deploy to (dev, staging, prod) [default: prod]"
-      echo "  --namespace=NAMESPACE   Kubernetes namespace to deploy to [default: default]"
-      echo "  --release=NAME          Helm release name [default: angular-app]"
-      echo "  --domain=DOMAIN         Domain name for the application [default: example.com]"
-      echo "  --tag=TAG               Image tag [default: latest]"
-      echo "  --create-cluster        Create a new GKE cluster if it doesn't exist"
-      echo "  --no-helm               Use kubectl instead of Helm for deployment"
-      echo "  --regional              Create a regional cluster instead of zonal"
-      echo "  --help                  Show this help message"
+      echo "  --project PROJECT_ID    Google Cloud project ID (required)"
+      echo "  --cluster CLUSTER_NAME  GKE cluster name (default: angular-cluster)"
+      echo "  --zone ZONE             GKE cluster zone (default: us-central1-a)"
+      echo "  --image IMAGE           Docker image to deploy (default: gcr.io/PROJECT_ID/angular-app:latest)"
       exit 0
       ;;
     *)
@@ -107,137 +56,115 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate required parameters
-if [ -z "${PROJECT_ID}" ]; then
-  echo "❌ Google Cloud Project ID is required. Use --project=PROJECT_ID"
+if [ -z "$PROJECT_ID" ]; then
+  echo "Error: --project PROJECT_ID is required"
+  echo "Run ./gke_deploy.sh --help for usage information"
   exit 1
 fi
 
-echo "🚀 Starting GKE deployment for Angular application"
-echo "☁️  Google Cloud Project: ${PROJECT_ID}"
-echo "🔧 GKE Cluster: ${CLUSTER_NAME}"
-if [ "${USE_REGIONAL}" = "true" ]; then
-  echo "🌎 Region: ${CLUSTER_REGION}"
-else
-  echo "🌎 Zone: ${CLUSTER_ZONE}"
-fi
-echo "⚙️  Environment: ${ENV}"
-echo "📦 Kubernetes Namespace: ${NAMESPACE}"
-echo "🌐 Domain: ${APP_DOMAIN}"
+# Update Docker image in values file
+sed -i.bak "s|repository:.*|repository: ${DOCKER_IMAGE%:*}|g" $VALUES_FILE
+sed -i.bak "s|tag:.*|tag: ${DOCKER_IMAGE##*:}|g" $VALUES_FILE
+
+# Display banner
+echo "===================================================="
+echo "   Angular Application GKE Deployment Tool"
+echo "===================================================="
+echo
+echo "Configuration:"
+echo "  Project ID:    $PROJECT_ID"
+echo "  Cluster:       $CLUSTER_NAME (in zone $CLUSTER_ZONE)"
+echo "  Docker Image:  $DOCKER_IMAGE"
+echo "  Namespace:     $NAMESPACE"
+echo "  Helm Chart:    $HELM_CHART_PATH"
+echo
 
 # Configure gcloud
-echo "⚙️  Configuring gcloud..."
-gcloud config set project ${PROJECT_ID}
+echo "➤ Configuring gcloud to use project $PROJECT_ID..."
+gcloud config set project $PROJECT_ID
 
-# Check if cluster exists
-CLUSTER_EXISTS=$(gcloud container clusters list --filter="name=${CLUSTER_NAME}" --format="value(name)")
-if [ -z "$CLUSTER_EXISTS" ] && [ "${CREATE_CLUSTER}" = "true" ]; then
-  echo "🔨 Creating GKE cluster ${CLUSTER_NAME}..."
-  if [ "${USE_REGIONAL}" = "true" ]; then
-    gcloud container clusters create ${CLUSTER_NAME} \
-      --region ${CLUSTER_REGION} \
-      --num-nodes ${CLUSTER_SIZE} \
-      --machine-type ${MACHINE_TYPE} \
-      --release-channel regular \
-      --enable-autoscaling \
-      --min-nodes 1 \
-      --max-nodes 5
-  else
-    gcloud container clusters create ${CLUSTER_NAME} \
-      --zone ${CLUSTER_ZONE} \
-      --num-nodes ${CLUSTER_SIZE} \
-      --machine-type ${MACHINE_TYPE} \
-      --release-channel regular \
-      --enable-autoscaling \
-      --min-nodes 1 \
-      --max-nodes 5
+# Get GKE credentials
+echo "➤ Getting credentials for GKE cluster $CLUSTER_NAME..."
+gcloud container clusters get-credentials $CLUSTER_NAME --zone $CLUSTER_ZONE
+
+# Check if Istio is installed in the cluster
+if kubectl get crd gateways.networking.istio.io &> /dev/null; then
+  echo "✓ Istio CRDs found, proceeding with Istio-enabled deployment"
+  ISTIO_ENABLED=true
+else
+  echo "! Istio not detected in the cluster. Will deploy without Istio service mesh integration."
+  echo "  To enable Istio, you can install it with:"
+  echo "  $ istioctl install --set profile=demo -y"
+  ISTIO_ENABLED=false
+  
+  # Update values file to disable Istio
+  if [ "$ISTIO_ENABLED" = false ]; then
+    echo "➤ Modifying values file to disable Istio..."
+    sed -i.bak 's/istio:\n  enabled: true/istio:\n  enabled: false/' $VALUES_FILE
   fi
-elif [ -z "$CLUSTER_EXISTS" ]; then
-  echo "❌ Cluster ${CLUSTER_NAME} doesn't exist. Use --create-cluster to create it."
-  exit 1
-else
-  echo "✅ Using existing cluster ${CLUSTER_NAME}"
-fi
-
-# Configure kubectl to use the cluster
-echo "⚙️  Configuring kubectl..."
-if [ "${USE_REGIONAL}" = "true" ]; then
-  gcloud container clusters get-credentials ${CLUSTER_NAME} --region ${CLUSTER_REGION} --project ${PROJECT_ID}
-else
-  gcloud container clusters get-credentials ${CLUSTER_NAME} --zone ${CLUSTER_ZONE} --project ${PROJECT_ID}
 fi
 
 # Create namespace if it doesn't exist
-if ! kubectl get namespace ${NAMESPACE} > /dev/null 2>&1; then
-  echo "📝 Creating namespace ${NAMESPACE}..."
-  kubectl create namespace ${NAMESPACE}
+echo "➤ Creating namespace $NAMESPACE if it doesn't exist..."
+kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+# Label namespace for Istio injection if Istio is enabled
+if [ "$ISTIO_ENABLED" = true ]; then
+  echo "➤ Enabling Istio sidecar injection for namespace $NAMESPACE..."
+  kubectl label namespace $NAMESPACE istio-injection=enabled --overwrite
 fi
 
-# Build container image
-echo "🔨 Building and pushing Docker image..."
-IMAGE_NAME="gcr.io/${PROJECT_ID}/angular-app:${IMAGE_TAG}"
-docker build -t ${IMAGE_NAME} -f angular-app-example/Dockerfile angular-app-example/
-gcloud auth configure-docker -q
-docker push ${IMAGE_NAME}
+# Deploy with Helm
+echo "➤ Deploying Helm chart with release name $RELEASE_NAME..."
+helm upgrade --install $RELEASE_NAME $HELM_CHART_PATH \
+  --namespace $NAMESPACE \
+  --timeout $TIMEOUT \
+  --create-namespace \
+  --wait
 
-# Deploy application
-if [ "${USE_HELM}" = "true" ]; then
-  echo "☸️  Deploying with Helm..."
+# Check deployment status
+echo "➤ Checking deployment status..."
+kubectl get pods -n $NAMESPACE
+
+# Show services
+echo
+echo "➤ Service details:"
+kubectl get svc -n $NAMESPACE
+
+# Display Istio resources if enabled
+if [ "$ISTIO_ENABLED" = true ]; then
+  echo
+  echo "➤ Istio Gateway:"
+  kubectl get gateway -n $NAMESPACE
   
-  # Set values overrides
-  SET_VALUES="--set ingress.hosts[0].host=${APP_DOMAIN}"
-  SET_VALUES="${SET_VALUES} --set ingress.tls[0].hosts[0]=${APP_DOMAIN}"
-  SET_VALUES="${SET_VALUES} --set container.image.repository=gcr.io/${PROJECT_ID}/angular-app"
-  SET_VALUES="${SET_VALUES} --set container.image.tag=${IMAGE_TAG}"
+  echo
+  echo "➤ Istio Virtual Service:"
+  kubectl get virtualservice -n $NAMESPACE
   
-  # Check if Helm release exists
-  if helm status ${RELEASE_NAME} -n ${NAMESPACE} > /dev/null 2>&1; then
-    echo "🔄 Upgrading existing release ${RELEASE_NAME}..."
-    helm upgrade ${RELEASE_NAME} angular-app-example/helm-chart \
-      -n ${NAMESPACE} \
-      ${SET_VALUES}
+  echo
+  echo "➤ Istio Destination Rule:"
+  kubectl get destinationrule -n $NAMESPACE
+fi
+
+# Check for LoadBalancer IP
+if kubectl get svc -n $NAMESPACE | grep -q LoadBalancer; then
+  echo
+  echo "➤ Waiting for LoadBalancer IP address..."
+  sleep 20
+  LB_IP=$(kubectl get svc -n $NAMESPACE -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].status.loadBalancer.ingress[0].ip}')
+  if [ -n "$LB_IP" ]; then
+    echo "✓ Application is accessible at: http://$LB_IP"
   else
-    echo "📦 Installing new release ${RELEASE_NAME}..."
-    helm install ${RELEASE_NAME} angular-app-example/helm-chart \
-      -n ${NAMESPACE} \
-      ${SET_VALUES}
-  fi
-  
-  echo "⏳ Waiting for deployment to be ready..."
-  kubectl -n ${NAMESPACE} rollout status deployment/${RELEASE_NAME}
-else
-  echo "📦 Deploying with kubectl..."
-  
-  # Process and apply Kubernetes manifests
-  echo "📝 Processing Kubernetes manifests..."
-  mkdir -p angular-app-example/k8s/generated
-  for file in angular-app-example/k8s/*.yaml; do
-    BASENAME=$(basename $file)
-    cat $file | \
-      sed "s|\${DOCKER_REGISTRY}|gcr.io/${PROJECT_ID}|g" | \
-      sed "s|\${IMAGE_TAG}|${IMAGE_TAG}|g" | \
-      sed "s|\${APP_DOMAIN}|${APP_DOMAIN}|g" > angular-app-example/k8s/generated/$BASENAME
-  done
-  
-  echo "🚀 Applying Kubernetes manifests..."
-  kubectl apply -f angular-app-example/k8s/generated/ -n ${NAMESPACE}
-  
-  echo "⏳ Waiting for deployment to be ready..."
-  kubectl -n ${NAMESPACE} rollout status deployment/angular-app
-fi
-
-echo "✅ Deployment to GKE completed successfully!"
-
-# Get ingress information if available
-if kubectl -n ${NAMESPACE} get ingress ${RELEASE_NAME} > /dev/null 2>&1; then
-  INGRESS_HOST=$(kubectl -n ${NAMESPACE} get ingress ${RELEASE_NAME} -o jsonpath='{.spec.rules[0].host}')
-  echo "🌐 Application will be available at https://${INGRESS_HOST} once DNS is configured"
-  
-  # Get load balancer IP
-  if [[ $(kubectl -n ${NAMESPACE} get ingress ${RELEASE_NAME} -o jsonpath='{.status.loadBalancer.ingress[0].ip}') ]]; then
-    LB_IP=$(kubectl -n ${NAMESPACE} get ingress ${RELEASE_NAME} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-    echo "🌐 Load balancer IP: ${LB_IP}"
-    echo "ℹ️  Configure your DNS to point ${INGRESS_HOST} to ${LB_IP}"
+    echo "! LoadBalancer IP is not yet available. Check with 'kubectl get svc -n $NAMESPACE'"
   fi
 fi
 
-echo "🎉 GKE deployment completed!"
+echo
+echo "===================================================="
+echo "✓ GKE Deployment completed!"
+echo "===================================================="
+
+# Restore original values file
+if [ -f "$VALUES_FILE.bak" ]; then
+  mv "$VALUES_FILE.bak" "$VALUES_FILE"
+fi

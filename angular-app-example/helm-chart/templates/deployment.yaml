@@ -1,66 +1,84 @@
+{{- /* Primary deployment for Angular application */ -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Values.application.name }}
+  name: {{ include "angular-app.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ .Values.application.name }}
-    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
-    release: "{{ .Release.Name }}"
-    heritage: "{{ .Release.Service }}"
+    {{- include "angular-app.labels" . | nindent 4 }}
     {{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled) }}
     version: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion | default "v1" }}
     {{- end }}
 spec:
+  {{- /* Disable autoscaling if HPA is enabled */ -}}
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
-      app: {{ .Values.application.name }}
+      {{- include "angular-app.selectorLabels" . | nindent 6 }}
       {{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled) }}
       version: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion | default "v1" }}
       {{- end }}
   template:
     metadata:
       labels:
-        app: {{ .Values.application.name }}
+        {{- include "angular-app.selectorLabels" . | nindent 8 }}
         {{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled) }}
         version: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion | default "v1" }}
         {{- end }}
-      {{- with .Values.podAnnotations }}
       annotations:
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
+        {{- /* Auto reload on config changes if running in dev mode */ -}}
+        {{- if .Values.dev }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
-        - name: {{ .Values.application.name }}
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
+          {{- /* Health checks */ -}}
           livenessProbe:
             httpGet:
               path: /
               port: http
             initialDelaySeconds: 60
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
           readinessProbe:
             httpGet:
               path: /
               port: http
             initialDelaySeconds: 30
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+            successThreshold: 1
+          {{- /* Resource limits and requests */ -}}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- /* Node placement configuration */ -}}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
