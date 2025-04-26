@@ -1,0 +1,38 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: angular-virtualservice
+  namespace: angular-app
+spec:
+  hosts:
+  - "example.com" # Replace with your domain
+  gateways:
+  - angular-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: angular-app
+        port:
+          number: 80
+    timeout: 5s
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: gateway-error,connect-failure,refused-stream
+    corsPolicy:
+      allowOrigins:
+      - exact: https://example.com
+      allowMethods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+      allowCredentials: true
+      allowHeaders:
+      - Authorization
+      - Content-Type
+      maxAge: "24h"

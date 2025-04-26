@@ -1,0 +1,26 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: angular-gateway
+  namespace: angular-app
+spec:
+  selector:
+    istio: ingressgateway # Use the default Istio ingress gateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*" # Domain will be configured in VirtualService
+    tls:
+      httpsRedirect: true # Redirect all HTTP traffic to HTTPS
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "*" # Domain will be configured in VirtualService
+    tls:
+      mode: SIMPLE
+      credentialName: angular-app-credential # This should match your TLS secret name

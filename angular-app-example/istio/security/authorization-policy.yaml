@@ -1,0 +1,35 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: angular-authz-policy
+  namespace: angular-app
+spec:
+  selector:
+    matchLabels:
+      app: angular-app
+  rules:
+  # Allow all traffic to public endpoints
+  - to:
+    - operation:
+        paths: ["/", "/assets/*", "/*.ico", "/*.js", "/*.css"]
+  # Require JWT for protected APIs
+  - from:
+    - source:
+        requestPrincipals: ["*"]
+    to:
+    - operation:
+        paths: ["/api/*"]
+        methods: ["GET", "POST", "PUT", "DELETE"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: angular-app
+spec:
+  selector:
+    matchLabels:
+      app: angular-app
+  jwtRules:
+  - issuer: "https://your-auth-provider.com"  # Replace with your actual auth provider
+    jwksUri: "https://your-auth-provider.com/.well-known/jwks.json"  # Replace with your actual JWKS URI
