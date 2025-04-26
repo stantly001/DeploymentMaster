@@ -1,5 +1,6 @@
-# Stage 1: Build the Angular application
+# Build stage
 FROM node:16-alpine as build
+
 WORKDIR /app
 
 # Copy package.json and package-lock.json
@@ -11,20 +12,26 @@ RUN npm ci
 # Copy the rest of the application
 COPY . .
 
-# Build the application for production
+# Build the application
 RUN npm run build:prod
 
-# Stage 2: Serve the app with Nginx
-FROM nginx:1.21-alpine
+# Production stage
+FROM nginx:stable-alpine
 
 # Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# Copy built Angular app from previous stage
+# Remove default nginx static assets
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy static assets from builder stage
 COPY --from=build /app/dist/angular-app-example /usr/share/nginx/html
+
+# Copy potential SSL certificates
+COPY --from=build /app/ssl /etc/nginx/ssl
 
 # Expose ports
 EXPOSE 80 443
 
-# Start Nginx server
+# Run nginx in foreground
 CMD ["nginx", "-g", "daemon off;"]
