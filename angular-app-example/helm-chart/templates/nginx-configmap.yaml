@@ -1,0 +1,67 @@
+{{- if .Values.container.nginx.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-nginx-config
+  labels:
+    app: {{ .Release.Name }}
+    app.kubernetes.io/name: {{ .Release.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Values.application.version | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  nginx.conf: |-
+    server {
+        listen 80;
+        server_name localhost;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        # Enable gzip compression
+        gzip on;
+        gzip_min_length 1000;
+        gzip_proxied expired no-cache no-store private auth;
+        gzip_types text/plain text/css application/json application/javascript application/x-javascript text/xml application/xml application/xml+rss text/javascript;
+
+        # Client max body size
+        client_max_body_size {{ .Values.container.nginx.config.clientMaxBodySize }};
+
+        # Worker connections
+        # This is used in worker_connections configuration in nginx.conf
+        # events {
+        #   worker_connections {{ .Values.container.nginx.config.workerConnections }};
+        # }
+
+        # Keep alive timeout
+        keepalive_timeout {{ .Values.container.nginx.config.keepAliveTimeout }};
+
+        # Server tokens
+        server_tokens {{ .Values.container.nginx.config.serverTokens }};
+
+        # Handle browser cache control
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+            expires 30d;
+            add_header Cache-Control "public, no-transform";
+        }
+
+        # SPA routing - redirect all requests to index.html
+        location / {
+            try_files $uri $uri/ /index.html =404;
+            add_header Cache-Control "no-store, no-cache, must-revalidate";
+        }
+
+        # Health check endpoint for Kubernetes probes
+        location /health {
+            access_log off;
+            return 200 'OK';
+            add_header Content-Type text/plain;
+        }
+
+        # Security headers
+        add_header X-Content-Type-Options nosniff;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header X-Frame-Options SAMEORIGIN;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https://api.example.com";
+    }
+{{- end }}
