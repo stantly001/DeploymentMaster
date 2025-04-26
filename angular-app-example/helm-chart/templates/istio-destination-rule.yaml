@@ -1,76 +1,49 @@
-{{- /* Istio DestinationRule: defines subsets of endpoints and circuit breaking */ -}}
-{{- if .Values.istio.enabled -}}
+{{- if and .Values.istio.enabled .Values.istio.destinationRule.enabled -}}
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
 metadata:
-  name: {{ include "angular-app.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ .Release.Name }}
   labels:
-    {{- include "angular-app.labels" . | nindent 4 }}
-    component: traffic-policy
+    app: {{ .Release.Name }}
+    app.kubernetes.io/name: {{ .Release.Name }}-dr
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
 spec:
-  # Host is the name of the service to which this rule applies
-  host: {{ include "angular-app.fullname" . }}
-
-  {{- /* Circuit breaker and connection pool settings */ -}}
-  {{- if .Values.istio.trafficManagement.circuitBreaker.enabled }}
+  host: {{ .Values.istio.destinationRule.host | default .Release.Name }}
+  {{- if .Values.istio.destinationRule.trafficPolicy }}
   trafficPolicy:
-    # Connection pool settings for TCP and HTTP connections
-    connectionPool:
-      # TCP connection pool settings
-      tcp:
-        maxConnections: {{ .Values.istio.trafficManagement.circuitBreaker.maxConnections }} # Maximum number of TCP connections
-        connectTimeout: {{ .Values.istio.trafficManagement.circuitBreaker.connectTimeout }} # TCP connection timeout
-      
-      # HTTP connection pool settings
-      http:
-        http1MaxPendingRequests: {{ .Values.istio.trafficManagement.circuitBreaker.http1MaxPendingRequests }} # Max queued requests
-        maxRequestsPerConnection: {{ .Values.istio.trafficManagement.circuitBreaker.maxRequestsPerConnection }} # Max requests per connection
-        maxRetries: {{ .Values.istio.trafficManagement.circuitBreaker.maxRetries }} # Max retries for a given request
+    {{- if .Values.istio.destinationRule.trafficPolicy.loadBalancer }}
+    loadBalancer:
+      {{- toYaml .Values.istio.destinationRule.trafficPolicy.loadBalancer | nindent 6 }}
+    {{- end }}
     
-    # Circuit breaker settings to eject failing hosts
+    {{- if .Values.istio.destinationRule.trafficPolicy.connectionPool }}
+    connectionPool:
+      {{- toYaml .Values.istio.destinationRule.trafficPolicy.connectionPool | nindent 6 }}
+    {{- end }}
+    
+    {{- if .Values.istio.trafficManagement.circuitBreaker.enabled }}
     outlierDetection:
-      consecutive5xxErrors: {{ .Values.istio.trafficManagement.circuitBreaker.consecutive5xxErrors }} # Number of 5xx errors before ejection
-      interval: {{ .Values.istio.trafficManagement.circuitBreaker.interval }} # Time between ejection analysis sweeps
-      baseEjectionTime: {{ .Values.istio.trafficManagement.circuitBreaker.baseEjectionTime }} # Minimum ejection duration
-      maxEjectionPercent: {{ .Values.istio.trafficManagement.circuitBreaker.maxEjectionPercent }} # Max percentage of hosts to eject
+      consecutiveErrors: {{ .Values.istio.trafficManagement.circuitBreaker.consecutiveErrors }}
+      interval: {{ .Values.istio.trafficManagement.circuitBreaker.interval }}
+      baseEjectionTime: {{ .Values.istio.trafficManagement.circuitBreaker.baseEjectionTime }}
+      maxEjectionPercent: {{ .Values.istio.trafficManagement.circuitBreaker.maxEjectionPercent }}
+      {{- if .Values.istio.trafficManagement.circuitBreaker.outlierDetection }}
+      {{- with .Values.istio.trafficManagement.circuitBreaker.outlierDetection }}
+      consecutiveGatewayErrors: {{ .consecutiveGatewayErrors }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
   {{- end }}
-
-  {{- /* Version subsets for traffic splitting */ -}}
-  {{- if or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled }}
-  # Define subsets of the target service for more precise traffic routing
+  
+  # Define subsets for different versions
   subsets:
-  # Stable version subset
-  - name: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion | default "v1" }}
-    labels:
-      version: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion | default "v1" }}
-    {{- if .Values.istio.trafficManagement.circuitBreaker.enabled }}
-    # You can override traffic policy settings for each subset if needed
-    trafficPolicy:
-      connectionPool:
-        tcp:
-          maxConnections: {{ .Values.istio.trafficManagement.circuitBreaker.maxConnections }}
-        http:
-          maxRetries: {{ .Values.istio.trafficManagement.circuitBreaker.maxRetries }}
+    - name: {{ .Values.istio.trafficManagement.stableVersion | default "v1" }}
+      labels:
+        version: {{ .Values.istio.trafficManagement.stableVersion | default "v1" }}
+    {{- if or .Values.istio.trafficManagement.canary.enabled .Values.istio.trafficManagement.trafficShifting.enabled }}
+    - name: {{ .Values.istio.trafficManagement.canary.version | default .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
+      labels:
+        version: {{ .Values.istio.trafficManagement.canary.version | default .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
     {{- end }}
-
-  # Canary/new version subset
-  - name: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
-    labels:
-      version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
-    {{- if .Values.istio.trafficManagement.circuitBreaker.enabled }}
-    # More stringent circuit breaker for canary to fail faster
-    trafficPolicy:
-      connectionPool:
-        tcp:
-          maxConnections: {{ div .Values.istio.trafficManagement.circuitBreaker.maxConnections 2 | int }}
-        http:
-          maxRetries: {{ div .Values.istio.trafficManagement.circuitBreaker.maxRetries 2 | int }}
-      outlierDetection:
-        consecutive5xxErrors: 1
-        interval: "1s"
-        baseEjectionTime: "30s"
-        maxEjectionPercent: 100
-    {{- end }}
-  {{- end }}
 {{- end }}

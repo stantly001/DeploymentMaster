@@ -1,97 +1,98 @@
-{{- /* Canary deployment - only created when Istio traffic management is enabled */ -}}
-{{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled) -}}
+{{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.canary.enabled .Values.istio.trafficManagement.trafficShifting.enabled) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "angular-app.fullname" . }}-canary
-  namespace: {{ .Release.Namespace }}
+  name: {{ .Release.Name }}-canary
   labels:
-    {{- include "angular-app.labels" . | nindent 4 }}
-    version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
-    role: canary
+    app: {{ .Release.Name }}
+    version: {{ .Values.istio.trafficManagement.canary.version | default .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
+    app.kubernetes.io/name: {{ .Release.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}-canary
+    app.kubernetes.io/version: {{ .Values.application.version | quote }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    canary: "true"
+  annotations:
+    {{- if .Values.monitoring.enabled }}
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "80"
+    prometheus.io/path: "/metrics"
+    {{- end }}
 spec:
-  {{- /* Canary deployments typically use fewer replicas than the primary deployment */ -}}
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ div .Values.replicaCount 2 | ceil | int }}
-  {{- end }}
+  replicas: {{ .Values.deployment.replicas }}
   selector:
     matchLabels:
-      {{- include "angular-app.selectorLabels" . | nindent 6 }}
-      version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
+      app: {{ .Release.Name }}
+      version: {{ .Values.istio.trafficManagement.canary.version | default .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
+  strategy:
+    {{- toYaml .Values.deployment.updateStrategy | nindent 4 }}
   template:
     metadata:
       labels:
-        {{- include "angular-app.selectorLabels" . | nindent 8 }}
-        version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
+        app: {{ .Release.Name }}
+        version: {{ .Values.istio.trafficManagement.canary.version | default .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
+        canary: "true"
       annotations:
-        {{- with .Values.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- /* Ensure Istio sidecar is injected */ -}}
         sidecar.istio.io/inject: "true"
-        {{- /* Add monitoring annotation to distinguish metrics */ -}}
-        prometheus.io/scrape: "true"
-        prometheus.io/path: "/metrics"
-        prometheus.io/port: "{{ .Values.service.targetPort }}"
-        {{- /* Auto reload on config changes if running in dev mode */ -}}
-        {{- if .Values.dev }}
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- end }}
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
+      {{- if .Values.gke.enabled }}
+      nodeSelector:
+        {{- toYaml .Values.gke.nodeSelectors | nindent 8 }}
       {{- end }}
-      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- toYaml .Values.deployment.securityContext | nindent 8 }}
       containers:
-        - name: {{ .Chart.Name }}-canary
-          {{- with .Values.securityContext }}
-          securityContext:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- /* Use canary-specific image tag if provided, otherwise use the main one */ -}}
-          image: "{{ .Values.image.repository }}:{{ .Values.istio.trafficManagement.canary.imageTag | default .Values.image.tag }}"
+        - name: {{ .Release.Name }}-canary
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.targetPort }}
+              containerPort: {{ .Values.container.port }}
               protocol: TCP
-          {{- /* Health checks for canary deployment - more aggressive than primary */ -}}
+          {{- if .Values.deployment.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
-              path: /
+              path: {{ .Values.deployment.livenessProbe.path }}
               port: http
-            initialDelaySeconds: 30  # Faster initial check for canary
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-            successThreshold: 1
+            initialDelaySeconds: {{ .Values.deployment.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.deployment.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.deployment.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.deployment.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.deployment.readinessProbe.enabled }}
           readinessProbe:
             httpGet:
-              path: /
+              path: {{ .Values.deployment.readinessProbe.path }}
               port: http
-            initialDelaySeconds: 15  # Faster readiness check for canary
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 2
-            successThreshold: 1
-          {{- /* Resource limits and requests */ -}}
+            initialDelaySeconds: {{ .Values.deployment.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.deployment.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.deployment.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.deployment.readinessProbe.failureThreshold }}
+          {{- end }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-      {{- /* Node placement configuration */ -}}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
+            {{- toYaml .Values.container.resources | nindent 12 }}
+          env:
+            {{- range .Values.env.normal }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            - name: CANARY_RELEASE
+              value: "true"
+            {{- range .Values.env.secrets }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName }}
+                  key: {{ .secretKey }}
+            {{- end }}
+          {{- if .Values.configMaps.enabled }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /usr/share/nginx/html/assets/config
+          {{- end }}
+      {{- if .Values.configMaps.enabled }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ .Release.Name }}-config
       {{- end }}
 {{- end }}

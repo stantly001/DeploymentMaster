@@ -1,127 +1,148 @@
-# Angular Application Deployment with Nginx
+# Angular Deployment Platform
 
-This project demonstrates how to deploy an Angular application using Nginx as a web server. This setup provides an efficient, secure, and production-ready environment for serving your Angular single-page application.
+A comprehensive deployment platform for Angular applications with support for multiple deployment strategies, including Kubernetes orchestration, Nginx configuration, and Istio service mesh integration.
 
 ## Features
 
-- Optimized Nginx configuration for Angular applications
-- HTML5 routing support
-- Gzip compression for optimal loading speeds
-- Security headers configuration
-- SSL/TLS ready
-- Static asset caching
-- Detailed deployment script with backup functionality
+- **Multiple Deployment Options**: Deploy to standard Kubernetes, GKE, or using standalone Nginx
+- **Istio Service Mesh Integration**: Advanced traffic management, security, and observability
+- **Helm Charts**: Customizable Helm charts for consistent deployments
+- **Canary Deployments**: Test new versions with header-based routing or traffic splitting
+- **Automated Scripts**: Simplified deployment with comprehensive scripts
+- **GitHub Actions Integration**: CI/CD pipeline examples for automated deployments
 
-## Project Structure
+## Repository Structure
 
-- `src/`: Angular application source code
-- `nginx.conf`: Nginx server configuration
-- `deploy.sh`: Deployment script
-- `Dockerfile`: Docker configuration for containerized deployment
+```
+angular-app-example/
+├── helm-chart/                # Helm chart for Kubernetes deployments
+│   ├── templates/             # Kubernetes manifests + Istio configurations
+│   ├── values.yaml            # Default configuration values
+│   └── README.md              # Helm chart documentation
+├── istio/                     # Standalone Istio configurations
+│   ├── traffic/               # Traffic management resources
+│   └── README.md              # Istio configuration guide
+├── scripts/                   # Helper scripts
+│   └── create-tls-secrets.sh  # TLS certificate creation for Istio
+├── multi-stage.Dockerfile     # Optimized Docker build file
+├── helm_deploy.sh             # Standard Kubernetes deployment script
+├── gke_deploy.sh              # Google Kubernetes Engine deployment script
+├── deploy.sh                  # Unified deployment script for all environments
+└── .github/workflows/         # GitHub Actions CI/CD workflows
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Docker
+- Kubernetes cluster (local or cloud-based)
+- Helm 3.2+
+- kubectl configured for your cluster
+- (Optional) Istio 1.8+ for service mesh features
+- (Optional) Google Cloud SDK for GKE deployments
+
+### Quick Start
+
+1. **Deploy to Standard Kubernetes**
+
+```bash
+# Deploy with default settings
+./deploy.sh --target kubernetes
+
+# Deploy with TLS and custom domain
+./deploy.sh --target kubernetes --tls --domain example.com
+```
+
+2. **Deploy to Google Kubernetes Engine (GKE)**
+
+```bash
+# Deploy to GKE
+./deploy.sh --target gke --project my-gcp-project --cluster my-cluster --zone us-central1-a
+```
+
+3. **Test Canary Deployments**
+
+After deployment with Istio enabled:
+
+```bash
+# Test the canary version (header-based routing)
+curl -H "x-canary: true" https://example.com/
+
+# Or configure traffic splitting in values.yaml for percentage-based routing
+```
 
 ## Deployment Options
 
-### Option 1: Direct Server Deployment
+### Helm Chart Deployment
 
-1. Build your Angular application:
-   ```bash
-   npm run build:prod
-   ```
+The Helm chart provides a flexible way to deploy the Angular application with all the necessary Kubernetes resources:
 
-2. Run the deployment script:
-   ```bash
-   ./deploy.sh --environment prod --server your-server.com --user username --dir /var/www/html
-   ```
+- Deployment for the application
+- Service for network access
+- Optional HPA for autoscaling
+- Optional Istio resources for service mesh features
 
-   This will:
-   - Build the application for production
-   - Backup any existing deployment on the server
-   - Copy the new build to the server
-   - Configure Nginx
-   - Restart Nginx
+See [Helm Chart README](helm-chart/README.md) for detailed configuration options.
 
-### Option 2: Docker Deployment
+### Istio Integration
 
-1. Build the Docker image:
-   ```bash
-   docker build -t angular-app .
-   ```
+The deployment includes comprehensive Istio service mesh integration for:
 
-2. Run the container:
-   ```bash
-   docker run -p 80:80 angular-app
-   ```
+- Traffic management (routing, canary deployments, circuit breaking)
+- Security (mTLS, authorization)
+- Observability (metrics, tracing, logging)
 
-### Option 3: Kubernetes Deployment
+See [Istio Integration Guide](helm-chart/README-istio-integration.md) for details.
 
-For Kubernetes deployment, you can use the Docker image built in Option 2 and create Kubernetes manifests as needed.
+### GKE-Specific Features
 
-## Nginx Configuration Highlights
+When deploying to Google Kubernetes Engine:
 
-The provided `nginx.conf` includes:
+- Automatic cluster credentials setup
+- Google Cloud Build integration
+- GCP-specific optimizations
 
-- HTML5 routing configuration (`try_files $uri $uri/ /index.html`)
-- Gzip compression for text-based assets
-- Cache control headers for static assets
-- Security headers (X-Frame-Options, X-XSS-Protection, etc.)
-- Commented SSL/TLS configuration ready to be enabled
+## Customization
 
-## Customizing the Deployment
+### Configuration Values
 
-### Server Configuration
+The primary configuration is in `helm-chart/values.yaml`. Key sections include:
 
-Edit `nginx.conf` to customize:
-- Server name (domain)
-- SSL/TLS settings
-- Cache durations
-- Security headers
-- API proxying (if needed)
+- `application`: Core application settings
+- `image`: Docker image configuration
+- `service`: Network configuration
+- `autoscaling`: HPA settings
+- `istio`: Service mesh configuration
 
-### Deployment Script
+### Adding Custom Domains and TLS
 
-The `deploy.sh` script accepts several parameters:
-- `--environment` (`-e`): Environment to deploy to (dev, staging, prod)
-- `--server` (`-s`): Server address
-- `--port` (`-p`): SSH port
-- `--user` (`-u`): SSH user
-- `--dir` (`-d`): Remote directory to deploy to
+1. Create TLS certificates:
 
-Example:
 ```bash
-./deploy.sh -e prod -s example.com -p 22 -u deployer -d /var/www/angular-app
+./scripts/create-tls-secrets.sh --domain example.com
 ```
 
-## Security Considerations
+2. Deploy with Istio Gateway enabled:
 
-1. Always use HTTPS in production (uncomment and configure SSL in nginx.conf)
-2. Keep Nginx updated to the latest stable version
-3. Review and customize the Content-Security-Policy header
-4. Consider implementing rate limiting for production
+```bash
+./deploy.sh --target kubernetes --tls --domain example.com
+```
 
-## Performance Optimizations
+## CI/CD Integration
 
-The configuration includes:
-- Gzip compression
-- Browser caching
-- Efficient routing
+The repository includes GitHub Actions workflows for:
 
-For further optimizations:
-- Enable HTTP/2 (requires SSL)
-- Implement a CDN for static assets
-- Configure Brotli compression
+- Docker image building and publishing
+- Helm chart linting and testing
+- Automated deployment to GKE
 
-## Troubleshooting
+See the workflows in `.github/workflows/` for implementation details.
 
-Common issues:
+## Contributing
 
-1. **404 errors on page refresh**: Ensure the `try_files $uri $uri/ /index.html;` directive is properly configured in Nginx.
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-2. **Permission denied errors**: Check file permissions and ownership on the server.
+## License
 
-3. **Nginx configuration test fails**: Run `nginx -t` to identify syntax errors.
-
-## Learn More
-
-For more information about Angular deployment, see:
-- [Angular Deployment Guide](https://angular.io/guide/deployment)
-- [Nginx Documentation](https://nginx.org/en/docs/)
+This project is licensed under the MIT License - see the LICENSE file for details.
