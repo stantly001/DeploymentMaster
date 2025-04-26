@@ -2,19 +2,26 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Values.application.name }}
+  namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.application.name }}
     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
     release: "{{ .Release.Name }}"
     heritage: "{{ .Release.Service }}"
+  {{- if .Values.service.annotations }}
+  annotations:
+    {{- toYaml .Values.service.annotations | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      protocol: TCP
+      name: http
   selector:
     app: {{ .Values.application.name }}
-  ports:
-  {{- range .Values.service.ports }}
-  - name: {{ .name }}
-    port: {{ .port }}
-    targetPort: {{ .targetPort }}
-    protocol: {{ .protocol }}
-  {{- end }}
+    {{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled) }}
+    # For Istio, we don't select on version so this service selects all versions
+    # Traffic routing is handled by Istio's destination rules and virtual services
+    {{- end }}

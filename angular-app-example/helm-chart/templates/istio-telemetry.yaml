@@ -1,0 +1,44 @@
+{{- if and .Values.istio.enabled .Values.istio.telemetry.enabled -}}
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: {{ .Values.application.name }}-telemetry
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.application.name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  metrics:
+  - providers:
+    {{- range .Values.istio.telemetry.metricsProviders }}
+    - name: {{ . }}
+    {{- end }}
+    overrides:
+    {{- range .Values.istio.telemetry.metricsOverrides }}
+    - match:
+        metric: {{ .metric }}
+        mode: {{ .mode }}
+      tagOverrides:
+        {{- range $key, $value := .tagOverrides }}
+        {{ $key }}:
+          value: {{ $value | quote }}
+        {{- end }}
+    {{- end }}
+  {{- if .Values.istio.telemetry.tracing }}
+  tracing:
+  - providers:
+    {{- range .Values.istio.telemetry.tracing.providers }}
+    - name: {{ . }}
+    {{- end }}
+    randomSamplingPercentage: {{ .Values.istio.telemetry.tracing.samplingRate }}
+  {{- end }}
+  {{- if .Values.istio.telemetry.accessLogging }}
+  accessLogging:
+  - providers:
+    {{- range .Values.istio.telemetry.accessLogging.providers }}
+    - name: {{ . }}
+    {{- end }}
+  {{- end }}
+{{- end }}

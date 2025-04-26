@@ -1,8 +1,11 @@
-{{- if .Values.ingress.enabled -}}
+{{- if and .Values.ingress.enabled (not .Values.istio.enabled) -}}
+{{- $fullName := include "angular-app.fullname" . -}}
+{{- $svcPort := .Values.service.port -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ .Values.application.name }}
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.application.name }}
     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
@@ -13,9 +16,6 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
-  {{- end }}
   {{- if .Values.ingress.tls }}
   tls:
     {{- range .Values.ingress.tls }}
@@ -32,13 +32,13 @@ spec:
       http:
         paths:
           {{- range .paths }}
-          - path: {{ .path }}
-            pathType: {{ .pathType }}
+          - path: {{ . }}
+            pathType: Prefix
             backend:
               service:
-                name: {{ $.Values.application.name }}
+                name: {{ $fullName }}
                 port:
-                  name: http
+                  number: {{ $svcPort }}
           {{- end }}
     {{- end }}
 {{- end }}

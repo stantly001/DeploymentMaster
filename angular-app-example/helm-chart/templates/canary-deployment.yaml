@@ -1,35 +1,32 @@
+{{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Values.application.name }}
+  name: {{ .Values.application.name }}-canary
   namespace: {{ .Release.Namespace }}
   labels:
     app: {{ .Values.application.name }}
     chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
     release: "{{ .Release.Name }}"
     heritage: "{{ .Release.Service }}"
-    {{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled) }}
-    version: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion | default "v1" }}
-    {{- end }}
+    version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ div .Values.replicaCount 2 | ceil | int }}
   selector:
     matchLabels:
       app: {{ .Values.application.name }}
-      {{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled) }}
-      version: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion | default "v1" }}
-      {{- end }}
+      version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
   template:
     metadata:
       labels:
         app: {{ .Values.application.name }}
-        {{- if and .Values.istio.enabled (or .Values.istio.trafficManagement.trafficShifting.enabled .Values.istio.trafficManagement.canary.enabled) }}
-        version: {{ .Values.istio.trafficManagement.trafficShifting.stableVersion | default "v1" }}
-        {{- end }}
-      {{- with .Values.podAnnotations }}
+        version: {{ .Values.istio.trafficManagement.trafficShifting.canaryVersion | default "v2" }}
       annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- if .Values.podAnnotations }}
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+        {{- end }}
+        # Add specific annotation for canary deployment
+        sidecar.istio.io/inject: "true"
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -41,7 +38,7 @@ spec:
         - name: {{ .Values.application.name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.istio.trafficManagement.canary.imageTag | default .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
@@ -73,3 +70,4 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+{{- end }}

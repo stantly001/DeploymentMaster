@@ -1,16 +1,14 @@
 apiVersion: v2
 name: angular-app
-description: A Helm chart for deploying Angular applications with Nginx on Kubernetes
+description: A Helm chart for deploying Angular applications with Istio service mesh integration
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
 keywords:
   - angular
   - nginx
-  - frontend
+  - web
+  - istio
 maintainers:
   - name: Your Name
     email: your.email@example.com
-sources:
-  - https://github.com/yourusername/angular-app
-icon: https://angular.io/assets/images/logos/angular/angular.svg
