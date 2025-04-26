@@ -4,119 +4,215 @@ import { Component } from '@angular/core';
   selector: 'app-about',
   template: `
     <div class="about-container">
-      <h1>About This Angular Application</h1>
-      <div class="about-content">
-        <div class="about-text">
-          <h2>Our Story</h2>
-          <p>
-            This is a sample Angular application created to demonstrate deployment with Nginx.
-            The application showcases Angular's component-based architecture, routing capabilities,
-            and how it can be effectively deployed to production using Nginx as a web server.
-          </p>
-          <p>
-            Angular provides a robust framework for building modern web applications with features like:
-          </p>
-          <ul>
-            <li>Component-based architecture</li>
-            <li>Powerful routing system</li>
-            <li>Dependency injection</li>
-            <li>Reactive forms</li>
-            <li>HTTP client for API communication</li>
-          </ul>
-        </div>
-        <div class="about-image">
-          <div class="image-placeholder">
-            <span>Angular Logo</span>
+      <h1>About This Project</h1>
+      
+      <div class="content-section">
+        <h2>Angular Deployment with Nginx</h2>
+        <p>
+          This example project demonstrates how to deploy an Angular application using Nginx as a web server.
+          Nginx is a powerful, efficient, and widely-used web server that works extremely well with single-page 
+          applications like those built with Angular.
+        </p>
+        
+        <h3>Why Nginx?</h3>
+        <ul class="feature-list">
+          <li>
+            <strong>High Performance:</strong> Nginx is designed to handle many concurrent connections with low memory usage
+          </li>
+          <li>
+            <strong>Static File Serving:</strong> Extremely efficient at serving static assets (HTML, CSS, JavaScript)
+          </li>
+          <li>
+            <strong>Load Balancing:</strong> Can distribute traffic across multiple servers
+          </li>
+          <li>
+            <strong>Reverse Proxy:</strong> Can proxy requests to backend services
+          </li>
+          <li>
+            <strong>Caching:</strong> Implements efficient caching to improve performance
+          </li>
+          <li>
+            <strong>SSL/TLS Termination:</strong> Handles HTTPS connections securely
+          </li>
+        </ul>
+      </div>
+      
+      <div class="content-section">
+        <h2>Key Deployment Features</h2>
+        
+        <div class="deployment-features">
+          <div class="feature">
+            <h3>HTML5 Routing Support</h3>
+            <p>
+              Configured to work with Angular's HTML5 routing by redirecting all routes to index.html
+              when no matching file is found, enabling client-side routing.
+            </p>
+          </div>
+          
+          <div class="feature">
+            <h3>Compression & Performance</h3>
+            <p>
+              Gzip compression is enabled for text-based assets, dramatically reducing transfer sizes
+              and improving load times for users. Static asset caching is also configured for optimal performance.
+            </p>
+          </div>
+          
+          <div class="feature">
+            <h3>Security Headers</h3>
+            <p>
+              Security is enhanced with HTTP headers like Content-Security-Policy, X-XSS-Protection,
+              and X-Frame-Options to protect against common web vulnerabilities.
+            </p>
+          </div>
+          
+          <div class="feature">
+            <h3>SSL/TLS Ready</h3>
+            <p>
+              The configuration includes commented sections for SSL/TLS setup, allowing for easy HTTPS 
+              implementation when certificates are available.
+            </p>
           </div>
         </div>
       </div>
-      <div class="team-section">
-        <h2>Our Technology Stack</h2>
-        <div class="technologies">
-          <div class="tech-card">
-            <h3>Angular</h3>
-            <p>Frontend framework for building dynamic single-page applications</p>
-          </div>
-          <div class="tech-card">
-            <h3>Nginx</h3>
-            <p>High-performance web server and reverse proxy for serving Angular apps</p>
-          </div>
-          <div class="tech-card">
-            <h3>TypeScript</h3>
-            <p>Typed superset of JavaScript that compiles to plain JavaScript</p>
-          </div>
-        </div>
+      
+      <div class="cta-section">
+        <h2>Ready to Deploy Your Own Angular App?</h2>
+        <p>Check out the deployment script and Dockerfile included in this example.</p>
+        <button class="btn primary" routerLink="/contact">Contact Us</button>
       </div>
     </div>
   `,
   styles: [`
     .about-container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 1rem;
+      max-width: 100%;
+      padding: 0 1rem;
     }
     
     h1 {
-      color: #3f51b5;
       margin-bottom: 2rem;
+      color: #3f51b5;
+      font-size: 2.5rem;
+      font-weight: 700;
+      border-bottom: 2px solid #f0f0f0;
+      padding-bottom: 0.5rem;
+    }
+    
+    .content-section {
+      margin-bottom: 3rem;
     }
     
     h2 {
+      color: #333;
+      font-size: 1.8rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    h3 {
       color: #3f51b5;
+      font-size: 1.4rem;
       margin: 1.5rem 0 1rem;
     }
     
-    .about-content {
-      display: grid;
-      grid-template-columns: 3fr 2fr;
-      gap: 2rem;
+    p {
+      line-height: 1.7;
+      margin-bottom: 1.5rem;
+      color: #444;
+    }
+    
+    .feature-list {
+      padding-left: 1.5rem;
       margin-bottom: 2rem;
     }
     
-    @media (max-width: 768px) {
-      .about-content {
-        grid-template-columns: 1fr;
-      }
+    .feature-list li {
+      margin-bottom: 1rem;
+      line-height: 1.6;
     }
     
-    .about-text ul {
-      margin-left: 1.5rem;
-      margin-top: 1rem;
-    }
-    
-    .about-text li {
-      margin-bottom: 0.5rem;
-    }
-    
-    .image-placeholder {
-      background-color: #f5f5f5;
-      height: 300px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 8px;
-      font-size: 1.5rem;
-      color: #3f51b5;
-    }
-    
-    .technologies {
+    .deployment-features {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 1.5rem;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 2rem;
       margin-top: 1.5rem;
     }
     
-    .tech-card {
-      background-color: #f5f5f5;
+    .feature {
+      background-color: #f9f9f9;
       padding: 1.5rem;
       border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      border-left: 4px solid #3f51b5;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      transition: transform 0.3s, box-shadow 0.3s;
     }
     
-    .tech-card h3 {
-      color: #3f51b5;
+    .feature:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    }
+    
+    .feature h3 {
       margin-top: 0;
-      margin-bottom: 0.5rem;
+      font-size: 1.3rem;
+    }
+    
+    .feature p {
+      margin-bottom: 0;
+      font-size: 0.95rem;
+    }
+    
+    .cta-section {
+      background: linear-gradient(135deg, #3f51b5, #7e57c2);
+      color: white;
+      padding: 2.5rem;
+      border-radius: 8px;
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    
+    .cta-section h2 {
+      color: white;
+      margin-bottom: 1rem;
+    }
+    
+    .cta-section p {
+      color: rgba(255, 255, 255, 0.9);
+      margin-bottom: 1.5rem;
+      font-size: 1.1rem;
+    }
+    
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: none;
+      display: inline-block;
+    }
+    
+    .primary {
+      background-color: white;
+      color: #3f51b5;
+    }
+    
+    .primary:hover {
+      background-color: #f5f5f5;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    @media (max-width: 768px) {
+      .deployment-features {
+        grid-template-columns: 1fr;
+      }
+      
+      h1 {
+        font-size: 2rem;
+      }
+      
+      .cta-section {
+        padding: 1.5rem;
+      }
     }
   `]
 })
