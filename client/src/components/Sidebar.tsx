@@ -24,23 +24,23 @@ export default function Sidebar({ sidebarOpen }: SidebarProps) {
           <div className="space-y-1">
             {navItems.map((item) => (
               <Link key={item.path} href={item.path}>
-                <a className={`flex items-center px-4 py-2 rounded-md ${
+                <div className={`flex items-center px-4 py-2 rounded-md cursor-pointer ${
                   location === item.path 
                     ? 'text-white bg-primary-600' 
                     : 'text-gray-300 hover:bg-gray-700'
                 }`}>
                   {item.icon}
                   {item.name}
-                </a>
+                </div>
               </Link>
             ))}
           </div>
         </nav>
         <div className="border-t border-gray-700 pt-4">
-          <a href="#" className="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 rounded-md">
+          <div className="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700 rounded-md cursor-pointer">
             <LogOut className="h-5 w-5 mr-3" />
             Logout
-          </a>
+          </div>
         </div>
       </div>
     </aside>
