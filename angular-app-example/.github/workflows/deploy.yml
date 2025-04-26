@@ -1,0 +1,121 @@
+name: Deploy Angular Application
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run tests
+      run: npm test -- --watch=false --browsers=ChromeHeadless
+      
+    - name: Build for production
+      run: npm run build:prod
+      
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist
+        path: dist/
+  
+  docker:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: dist
+        path: dist/
+        
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+      
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: Generate Nginx config
+      run: |
+        node scripts/nginx-config-generator.js --env=prod --domain=${{ github.event.inputs.environment == 'production' && 'myapp.example.com' || 'staging.myapp.example.com' }} --output=./nginx.conf
+        
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: ${{ secrets.DOCKER_USERNAME }}/angular-app:${{ github.event.inputs.environment == 'production' && 'latest' || 'staging' }}-${{ github.sha }}
+        cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/angular-app:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/angular-app:buildcache,mode=max
+  
+  deploy:
+    needs: docker
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    
+    steps:
+    - name: Deploy to server
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          # Pull the latest image
+          docker pull ${{ secrets.DOCKER_USERNAME }}/angular-app:${{ github.event.inputs.environment == 'production' && 'latest' || 'staging' }}-${{ github.sha }}
+          
+          # Stop and remove the existing container
+          docker stop angular-app || true
+          docker rm angular-app || true
+          
+          # Run the new container
+          docker run -d \
+            --name angular-app \
+            -p 80:80 \
+            -p 443:443 \
+            -v /etc/letsencrypt:/etc/nginx/ssl \
+            --restart always \
+            ${{ secrets.DOCKER_USERNAME }}/angular-app:${{ github.event.inputs.environment == 'production' && 'latest' || 'staging' }}-${{ github.sha }}
+          
+          # Cleanup old images
+          docker image prune -af --filter "until=24h"
+    
+    - name: Send deployment notification
+      if: success()
+      uses: rtCamp/action-slack-notify@v2
+      env:
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        SLACK_COLOR: ${{ job.status }}
+        SLACK_TITLE: "Angular Application Deployment"
+        SLACK_MESSAGE: "Successfully deployed to ${{ github.event.inputs.environment || 'staging' }} environment!"
